@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limpeza-downloads"
+version = "1.0.0"
+description = "Remove itens antigos da pasta de Downloads, com modo de simulação e logs."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pip-audit"]
+
+[project.scripts]
+limpeza-downloads = "limpeza_downloads.limpeza:main"
+
+[tool.setuptools]
+packages = ["limpeza_downloads"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
