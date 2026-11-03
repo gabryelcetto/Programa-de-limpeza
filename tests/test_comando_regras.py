@@ -422,3 +422,26 @@ def test_exemplo_roda_em_simulacao_sem_alterar_nada(amb, monkeypatch):
 
     assert codigo == 0
     assert pdf.exists() and instalador.exists() and antigo.exists()
+
+
+# ------------------------------------------------------- opção --dry-run
+
+
+def test_listar_nao_aceita_dry_run_porque_so_le(amb, capsys):
+    config = regras_padrao(amb)
+
+    with pytest.raises(SystemExit) as saida:
+        amb.cli("listar", "--config", str(config), "--dry-run")
+
+    assert saida.value.code == 2
+    assert "--dry-run" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("comando, tem_dry_run", [
+    ("limpar", True), ("rodar", True), ("listar", False),
+])
+def test_ajuda_mostra_dry_run_so_nos_comandos_que_alteram_arquivos(comando, tem_dry_run, capsys):
+    with pytest.raises(SystemExit):
+        cli.main([comando, "--help"])
+
+    assert ("--dry-run" in capsys.readouterr().out) is tem_dry_run

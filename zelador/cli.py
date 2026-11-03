@@ -7,7 +7,8 @@ from typing import Optional
 
 from . import comando_regras, limpeza, logs
 
-# Módulos que oferecem `registrar(subparsers, comum)`; cada um define um subcomando.
+# Módulos que oferecem `registrar(subparsers, comum)`; cada um define subcomandos.
+# `comum` tem o que todos os comandos aceitam (hoje, --log-dir).
 SUBCOMANDOS = (limpeza, comando_regras)
 
 SUBCOMANDO_PADRAO = "limpar"
@@ -15,8 +16,6 @@ SUBCOMANDO_PADRAO = "limpar"
 
 def _opcoes_comuns() -> argparse.ArgumentParser:
     comum = argparse.ArgumentParser(add_help=False)
-    comum.add_argument("--dry-run", action="store_true",
-                       help="apenas mostra o que seria feito, sem alterar nada")
     comum.add_argument("--log-dir", type=Path, default=None, help="pasta dos logs")
     return comum
 

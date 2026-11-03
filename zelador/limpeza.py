@@ -4,6 +4,7 @@ from pathlib import Path
 from .arquivos import formatar_tamanho
 from .caminhos import obter_pasta_downloads
 from .logs import logger
+from .opcoes import adicionar_dry_run
 from .regras import Apagar, IdadeMinima, Regra, Resumo, executar_regra
 
 DIAS_LIMITE = 7  # dias sem atividade para considerar um item como antigo
@@ -37,6 +38,7 @@ def registrar(subparsers, comum: argparse.ArgumentParser) -> None:
         help="remove itens antigos de uma pasta (padrão: Downloads)",
         description="Remove itens antigos da pasta de Downloads.",
     )
+    adicionar_dry_run(parser)
     parser.add_argument("--dias", type=_dias_validos, default=DIAS_LIMITE,
                         help="dias sem atividade (mínimo 1; padrão: %(default)s)")
     parser.add_argument("--pasta", type=Path, default=None,

@@ -12,6 +12,7 @@ from . import caminhos
 from .arquivos import formatar_tamanho
 from .configuracao import Carga, ErroConfiguracao, carregar_regras
 from .logs import logger
+from .opcoes import adicionar_dry_run
 from .regras import Resumo, executar_regra
 
 
@@ -24,6 +25,7 @@ def registrar(subparsers, comum: argparse.ArgumentParser) -> None:
         description="Executa, em ordem, as regras de um arquivo YAML. Regras inválidas são "
                     "ignoradas com um aviso e as demais continuam.",
     )
+    adicionar_dry_run(rodar)
     rodar.add_argument("--config", type=Path, default=None, help=ajuda_config)
     rodar.set_defaults(executar=executar_rodar)
 

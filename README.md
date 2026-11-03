@@ -32,17 +32,17 @@ python -m zelador limpar --help
 Chamadas sem comando (`python -m zelador --dry-run`, ou sem nenhum argumento) continuam
 funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas antes dos comandos.
 
-**Opções comuns a todos os comandos**
+**Opção comum a todos os comandos**
 
 | Opção | Descrição | Padrão |
 |---|---|---|
-| `--dry-run` | Apenas mostra o que seria feito, sem alterar nada | desligado |
 | `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\Zelador\logs` |
 
-**Comando `limpar`**
+**Comando `limpar`** (o `rodar` também aceita `--dry-run`; comandos que só leem não têm essa opção)
 
 | Opção | Descrição | Padrão |
 |---|---|---|
+| `--dry-run` | Apenas mostra o que seria apagado, sem alterar nada | desligado |
 | `--dias N` | Dias sem atividade para considerar o item antigo (mínimo 1) | `7` |
 | `--pasta CAMINHO` | Pasta a limpar | Downloads do usuário |
 
