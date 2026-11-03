@@ -5,18 +5,17 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import comando_regras, limpeza, logs
+from . import comando_regras, comando_sistema, limpeza, logs
 
-# Módulos que oferecem `registrar(subparsers, comum)`; cada um define um subcomando.
-SUBCOMANDOS = (limpeza, comando_regras)
+# Módulos que oferecem `registrar(subparsers, comum)`; cada um define subcomandos.
+# `comum` tem o que todos os comandos aceitam (hoje, --log-dir).
+SUBCOMANDOS = (limpeza, comando_regras, comando_sistema)
 
 SUBCOMANDO_PADRAO = "limpar"
 
 
 def _opcoes_comuns() -> argparse.ArgumentParser:
     comum = argparse.ArgumentParser(add_help=False)
-    comum.add_argument("--dry-run", action="store_true",
-                       help="apenas mostra o que seria feito, sem alterar nada")
     comum.add_argument("--log-dir", type=Path, default=None, help="pasta dos logs")
     return comum
 

@@ -2,3 +2,4 @@
 # Ferramentas de desenvolvimento (pytest, ruff, pip-audit) são instaladas pela pipeline
 # e listadas em pyproject.toml ([project.optional-dependencies] dev).
 pyyaml>=6.0
+psutil>=5.9
