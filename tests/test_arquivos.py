@@ -1,6 +1,9 @@
 import shutil
+import stat
 import subprocess
 import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -126,4 +129,26 @@ def test_recusa_mover_symlink_de_pasta(tmp_path):
     with pytest.raises(OSError, match="atalho"):
         arquivos.mover_item(atalho, tmp_path / "destino")
 
+    assert alvo.exists()
+
+
+def test_recusa_atalho_de_pasta_quando_o_lstat_so_diz_que_e_link(tmp_path, monkeypatch):
+    """Reproduz o Linux em qualquer sistema: o lstat de um symlink para pasta só informa
+    'é link' (sem o bit de diretório), e só is_dir() revela que o destino é uma pasta."""
+    alvo = tmp_path / "alvo"
+    alvo.mkdir()
+    dado = criar(alvo, "dado.txt", "nao mexer")
+    lstat_real = Path.lstat
+
+    def lstat_estilo_posix(self):
+        if self == alvo:
+            return SimpleNamespace(st_mode=stat.S_IFLNK | 0o777)
+        return lstat_real(self)
+
+    monkeypatch.setattr(Path, "lstat", lstat_estilo_posix)
+
+    with pytest.raises(OSError, match="atalho"):
+        arquivos.mover_item(alvo, tmp_path / "destino")
+
+    assert dado.read_text() == "nao mexer"
     assert alvo.exists()

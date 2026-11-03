@@ -125,7 +125,8 @@ def mover_item(item: Path, pasta_destino: Path) -> Path:
     parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
     info = item.lstat()
     eh_pasta = _eh_pasta(info)
-    if eh_pasta and _eh_link(info):
+    # no Linux o lstat de um symlink para pasta não traz o bit de diretório; is_dir() segue o link
+    if _eh_link(info) and (eh_pasta or item.is_dir()):
         raise OSError(f"'{item.name}' é um atalho de pasta; atalhos não são movidos")
 
     pasta_destino.mkdir(parents=True, exist_ok=True)
