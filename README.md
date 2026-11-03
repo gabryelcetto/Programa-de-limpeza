@@ -96,12 +96,16 @@ auditoria de vulnerabilidades das dependências (`pip-audit`).
 ```
 limpeza_downloads/
   cli.py          comandos e opções comuns (ponto de entrada)
-  limpeza.py      comando `limpar`
+  limpeza.py      comando `limpar` (uma regra do motor: apagar o que é antigo)
+  regras.py       motor de regras: condições (idade, extensão, tamanho, nome) e ações (apagar, mover)
+  arquivos.py     operações sobre arquivos: medir, apagar, mover, formatar tamanho
   logs.py         configuração e rotação dos logs
   __main__.py     permite `python -m limpeza_downloads`
 tests/
   test_cli.py     testes da linha de comando
-  test_limpeza.py testes da lógica de limpeza
+  test_limpeza.py testes do comando `limpar`
+  test_regras.py  testes do motor de regras
+  test_arquivos.py testes de mover/numerar arquivos
 .github/workflows/pipeline.yml
 ```
 
