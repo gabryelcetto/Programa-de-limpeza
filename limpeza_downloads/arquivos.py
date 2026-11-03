@@ -1,4 +1,4 @@
-"""Operações sobre arquivos e pastas: medir idade e tamanho, apagar e formatar."""
+"""Operações sobre arquivos e pastas: medir idade e tamanho, apagar, mover e formatar."""
 
 import os
 import shutil
@@ -6,6 +6,7 @@ import stat
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
+from itertools import count
 from pathlib import Path
 
 
@@ -104,6 +105,42 @@ def deletar_item(item: Path) -> None:
         except PermissionError:
             os.chmod(item, stat.S_IWRITE)
             item.unlink()
+
+
+def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
+    """Se o nome já existe, usa 'nome (1).ext', 'nome (2).ext'... Nunca sobrescreve."""
+    if not os.path.lexists(destino):
+        return destino
+    base, sufixo = (destino.name, "") if eh_pasta else (destino.stem, destino.suffix)
+    for n in count(1):
+        candidato = destino.with_name(f"{base} ({n}){sufixo}")
+        if not os.path.lexists(candidato):
+            return candidato
+
+
+def mover_item(item: Path, pasta_destino: Path) -> Path:
+    """Move o item para a pasta (criada se preciso) e devolve o novo caminho.
+
+    Não sobrescreve nada. Se a movimentação falhar no meio (ex.: entre volumes), a cópia
+    parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
+    info = item.lstat()
+    eh_pasta = _eh_pasta(info)
+    if eh_pasta and _eh_link(info):
+        raise OSError(f"'{item.name}' é um atalho de pasta; atalhos não são movidos")
+
+    pasta_destino.mkdir(parents=True, exist_ok=True)
+    destino = _caminho_livre(pasta_destino / item.name, eh_pasta)
+    try:
+        shutil.move(item, destino)
+    except OSError:
+        if os.path.lexists(item) and os.path.lexists(destino):
+            try:
+                # o nome estava livre: o que existe aqui é uma cópia parcial nossa
+                deletar_item(destino)
+            except OSError:
+                pass
+        raise
+    return destino
 
 
 def formatar_tamanho(bytes_: int) -> str:
