@@ -1,50 +1,12 @@
 import argparse
-import ctypes
-import sys
-import uuid
-from ctypes import wintypes
 from pathlib import Path
 
 from .arquivos import formatar_tamanho
+from .caminhos import obter_pasta_downloads
 from .logs import logger
 from .regras import Apagar, IdadeMinima, Regra, Resumo, executar_regra
 
 DIAS_LIMITE = 7  # dias sem atividade para considerar um item como antigo
-
-# GUID do Known Folder "Downloads" (respeita redirecionamento por OneDrive/GPO)
-FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
-
-
-# ---------------------------------------------------------------- caminhos
-
-
-def obter_pasta_downloads() -> Path:
-    """Resolve a pasta de Downloads real do usuário (Known Folders no Windows)."""
-    if sys.platform == "win32":
-        try:
-
-            class GUID(ctypes.Structure):
-                _fields_ = [
-                    ("Data1", wintypes.DWORD),
-                    ("Data2", wintypes.WORD),
-                    ("Data3", wintypes.WORD),
-                    ("Data4", ctypes.c_ubyte * 8),
-                ]
-
-            guid = GUID.from_buffer_copy(uuid.UUID(FOLDERID_DOWNLOADS).bytes_le)
-            caminho = ctypes.c_wchar_p()
-            resultado = ctypes.windll.shell32.SHGetKnownFolderPath(
-                ctypes.byref(guid), 0, None, ctypes.byref(caminho)
-            )
-            if resultado == 0:
-                try:
-                    return Path(caminho.value)
-                finally:
-                    ctypes.windll.ole32.CoTaskMemFree(caminho)
-        except Exception:
-            pass  # cai no caminho padrão abaixo
-
-    return Path.home() / "Downloads"
 
 
 def limpar(pasta: Path, dias: int, dry_run: bool) -> Resumo:
@@ -91,7 +53,11 @@ def executar(args: argparse.Namespace) -> int:
         logger.error("A pasta %s não foi encontrada.", pasta)
         return 1
 
-    resumo = limpar(pasta, args.dias, args.dry_run)
+    try:
+        resumo = limpar(pasta, args.dias, args.dry_run)
+    except ValueError as erro:  # pasta protegida (raiz do disco, pasta do sistema...)
+        logger.error("%s", erro)
+        return 2
 
     verbo = "seriam apagados" if args.dry_run else "apagados"
     logger.info("Concluído: %d %s (%s), %d mantidos, %d erros.",

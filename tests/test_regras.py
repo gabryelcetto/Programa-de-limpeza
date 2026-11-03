@@ -307,3 +307,70 @@ def test_pasta_vazia_nao_quebra(tmp_path):
 def test_pasta_inexistente_levanta_oserror(tmp_path):
     with pytest.raises(OSError):
         executar_regra(Regra("r", tmp_path / "nao_existe", [IdadeMinima(7)], Apagar()))
+
+
+# ------------------------------------------------- pastas protegidas
+
+
+@pytest.fixture
+def sistema_falso(tmp_path, monkeypatch):
+    windows = tmp_path / "Windows"
+    home = tmp_path / "Users" / "ana"
+    (windows / "System32").mkdir(parents=True)
+    (home / "Downloads").mkdir(parents=True)
+    for variavel in ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432",
+                     "ProgramData"):
+        monkeypatch.delenv(variavel, raising=False)
+    monkeypatch.setenv("SystemRoot", str(windows))
+    monkeypatch.setattr(Path, "home", lambda: home)
+    return windows, home
+
+
+def test_regra_na_raiz_do_disco_e_recusada(tmp_path):
+    raiz = Path(os.path.realpath(tmp_path)).anchor
+
+    with pytest.raises(ValueError, match="raiz de um disco"):
+        Regra("perigosa", Path(raiz), [IdadeMinima(7)], Apagar())
+
+
+def test_regra_na_pasta_pessoal_e_recusada_mas_nas_subpastas_nao(sistema_falso):
+    _, home = sistema_falso
+
+    with pytest.raises(ValueError, match="pasta pessoal"):
+        Regra("perigosa", home, [IdadeMinima(7)], Apagar())
+    Regra("ok", home / "Downloads", [IdadeMinima(7)], Apagar())  # não levanta
+
+
+def test_regra_em_pasta_do_sistema_e_recusada(sistema_falso):
+    windows, _ = sistema_falso
+
+    for pasta in (windows, windows / "System32"):
+        with pytest.raises(ValueError, match="pasta do sistema"):
+            Regra("perigosa", pasta, [IdadeMinima(7)], Mover(Path("/tmp/destino_qualquer")))
+
+
+def test_a_mensagem_da_recusa_diz_qual_regra_e_qual_pasta(sistema_falso):
+    windows, _ = sistema_falso
+
+    with pytest.raises(ValueError) as erro:
+        Regra("Limpar tudo", windows, [IdadeMinima(7)], Apagar())
+
+    assert "Limpar tudo" in str(erro.value) and str(windows) in str(erro.value)
+
+
+def test_mover_para_dentro_de_pasta_do_sistema_e_recusado(sistema_falso):
+    windows, _ = sistema_falso
+
+    with pytest.raises(ValueError, match="pasta do sistema"):
+        Mover(windows / "System32" / "novo")
+
+
+def test_mover_para_a_pasta_pessoal_e_permitido(sistema_falso):
+    _, home = sistema_falso
+
+    assert Mover(home / "Documentos" / "PDFs").destino == home / "Documentos" / "PDFs"
+
+
+def test_resumo_das_acoes(tmp_path):
+    assert Apagar().resumo() == "apagar"
+    assert Mover(tmp_path / "x").resumo() == f"mover para {tmp_path / 'x'}"

@@ -177,3 +177,20 @@ def test_rotaciona_logs_antigos_ao_final(ambiente):
               "--log-dir", str(ambiente.pasta_logs)])
 
     assert not antigo.exists()
+
+
+def test_limpar_recusa_pasta_protegida_sem_listar_nem_apagar(ambiente, monkeypatch, caplog):
+    """Mesmo com --dry-run (para nada ser apagado se a proteção falhar): raiz do disco é
+    recusada antes de qualquer varredura."""
+    raiz = os.path.splitdrive(os.path.realpath(ambiente.downloads))[0] + os.sep
+
+    def nao_pode_executar(*args, **kwargs):
+        raise AssertionError("a regra não deveria ter sido executada")
+
+    monkeypatch.setattr(limpeza, "executar_regra", nao_pode_executar)
+
+    codigo = cli.main(["limpar", "--dry-run", "--pasta", raiz,
+                       "--log-dir", str(ambiente.pasta_logs)])
+
+    assert codigo == 2
+    assert "raiz de um disco" in caplog.text

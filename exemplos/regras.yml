@@ -1,0 +1,46 @@
+# Exemplo de arquivo de regras do Zelador.
+#
+# Antes de rodar, confira o que cada regra faz:   zelador listar --config exemplos/regras.yml
+# Depois simule, sem alterar nada:                zelador rodar --config exemplos/regras.yml --dry-run
+#
+# As regras rodam em ORDEM. Cada uma olha os itens que estão diretamente na sua pasta
+# (uma subpasta conta como um item só) e só age se TODAS as condições forem verdadeiras.
+#
+# Caminhos: {downloads} é a pasta Downloads real do usuário (mesmo se estiver no OneDrive);
+# ~ é a pasta pessoal; ${VARIAVEL} usa uma variável de ambiente. Devem ser absolutos.
+# Caminhos do Windows podem ficar sem aspas ou entre aspas simples.
+#
+# Cuidado com o YAML: no, yes, on e off SEM aspas viram falso/verdadeiro.
+# Para uma extensão chamada "no", escreva ["no"].
+#
+# Por segurança o Zelador recusa regras em pastas como a raiz do disco, a pasta do Windows
+# e a sua pasta pessoal inteira.
+
+versao: 1
+
+regras:
+  # 1. PDFs saem de Downloads para uma pasta própria (nada é sobrescrito: se já existir um
+  #    arquivo com o mesmo nome, o novo vira "nome (1).pdf").
+  - nome: Organizar PDFs
+    pasta: "{downloads}"
+    condicoes:
+      extensoes: [pdf]
+      idade_dias: 1
+    acao:
+      mover: ~/Documents/PDFs
+
+  # 2. Instaladores grandes, que ninguém mais vai usar depois de instalar.
+  - nome: Apagar instaladores antigos
+    pasta: "{downloads}"
+    condicoes:
+      extensoes: [exe, msi]
+      tamanho_min: 20MB
+      idade_dias: 3
+    acao: apagar
+
+  # 3. Rede de segurança, por último: o que sobrou e está parado há mais de 30 dias.
+  - nome: Limpar downloads parados
+    pasta: "{downloads}"
+    condicoes:
+      idade_dias: 30
+    acao: apagar

@@ -1,3 +1,4 @@
-# O programa usa apenas a biblioteca padrão do Python (nenhuma dependência de runtime).
+# Dependências de execução do programa.
 # Ferramentas de desenvolvimento (pytest, ruff, pip-audit) são instaladas pela pipeline
 # e listadas em pyproject.toml ([project.optional-dependencies] dev).
+pyyaml>=6.0
