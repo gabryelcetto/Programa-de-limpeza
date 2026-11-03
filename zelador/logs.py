@@ -26,7 +26,9 @@ def configurar_logging(pasta_log: Path) -> Optional[Path]:
     """Configura log no console e em <pasta_log>/<data>/log.txt.
     Se o arquivo não puder ser criado, segue só com o console."""
     logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
+    for handler in list(logger.handlers):  # fecha os de uma configuração anterior
+        handler.close()
+        logger.removeHandler(handler)
     formato = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
 
     if sys.stderr is not None:
