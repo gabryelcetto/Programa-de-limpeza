@@ -10,28 +10,45 @@ ninguém perceber, e roda sem dependências externas (apenas a biblioteca padrã
 
 ## Uso
 
+O programa é organizado em **comandos**. Por enquanto existe o `limpar`, e a ideia é que outros
+sejam adicionados.
+
 ```bash
 # Simulação: lista o que seria apagado, sem apagar nada (comece sempre por aqui)
-python -m limpeza_downloads --dry-run
+python -m limpeza_downloads limpar --dry-run
 
 # Apaga o que está há mais de 7 dias (padrão) sem atividade
-python -m limpeza_downloads
+python -m limpeza_downloads limpar
 
 # Muda o limite e a pasta
-python -m limpeza_downloads --dias 14 --pasta "D:\Temporarios"
+python -m limpeza_downloads limpar --dias 14 --pasta "D:\Temporarios"
+
+# Ajuda geral e de um comando
+python -m limpeza_downloads --help
+python -m limpeza_downloads limpar --help
 ```
+
+Chamadas sem comando (`python -m limpeza_downloads --dry-run`, ou sem nenhum argumento) continuam
+funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas antes dos comandos.
+
+**Opções comuns a todos os comandos**
 
 | Opção | Descrição | Padrão |
 |---|---|---|
-| `--dry-run` | Apenas lista o que seria apagado | desligado |
+| `--dry-run` | Apenas mostra o que seria feito, sem alterar nada | desligado |
+| `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\LimpezaDownloads\logs` |
+
+**Comando `limpar`**
+
+| Opção | Descrição | Padrão |
+|---|---|---|
 | `--dias N` | Dias sem atividade para considerar o item antigo (mínimo 1) | `7` |
 | `--pasta CAMINHO` | Pasta a limpar | Downloads do usuário |
-| `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\LimpezaDownloads\logs` |
 
 **Código de saída:** `0` quando tudo ocorreu bem, `1` se houve algum erro ou a pasta não existe,
 e `2` para argumentos inválidos. Isso permite usar o resultado em agendadores e pipelines.
 
-Para instalar como comando: `pip install .` e depois `limpeza-downloads --dry-run`.
+Para instalar como comando: `pip install .` e depois `limpeza-downloads limpar --dry-run`.
 
 ## Decisões técnicas
 
@@ -57,10 +74,10 @@ Com o pacote instalado (`pip install .`), o comando `limpeza-downloads` funciona
 pasta. Para rodar todo dia às 09:00 pelo Agendador de Tarefas:
 
 ```powershell
-schtasks /Create /SC DAILY /ST 09:00 /TN "Limpeza Downloads" /TR "limpeza-downloads" /F
+schtasks /Create /SC DAILY /ST 09:00 /TN "Limpeza Downloads" /TR "limpeza-downloads limpar" /F
 ```
 
-Teste antes com `limpeza-downloads --dry-run` e confira o log gerado.
+Teste antes com `limpeza-downloads limpar --dry-run` e confira o log gerado.
 
 ## Desenvolvimento
 
@@ -78,10 +95,13 @@ auditoria de vulnerabilidades das dependências (`pip-audit`).
 
 ```
 limpeza_downloads/
-  limpeza.py      lógica principal e CLI
+  cli.py          comandos e opções comuns (ponto de entrada)
+  limpeza.py      comando `limpar`
+  logs.py         configuração e rotação dos logs
   __main__.py     permite `python -m limpeza_downloads`
 tests/
-  test_limpeza.py testes (pytest)
+  test_cli.py     testes da linha de comando
+  test_limpeza.py testes da lógica de limpeza
 .github/workflows/pipeline.yml
 ```
 

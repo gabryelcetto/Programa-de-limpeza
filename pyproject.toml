@@ -15,7 +15,7 @@ dependencies = []
 dev = ["pytest", "ruff", "pip-audit"]
 
 [project.scripts]
-limpeza-downloads = "limpeza_downloads.limpeza:main"
+limpeza-downloads = "limpeza_downloads.cli:main"
 
 [tool.setuptools]
 packages = ["limpeza_downloads"]
