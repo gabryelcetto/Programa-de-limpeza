@@ -4,16 +4,15 @@
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Ferramenta de manutenção de arquivos para Windows, em Python. Hoje o comando `limpar` remove da
-pasta de **Downloads** os arquivos e pastas sem atividade há mais de N dias. Ele nasceu de uma
-necessidade real do trabalho, onde a pasta de Downloads enchia sem ninguém perceber, e roda sobre
-um motor de regras (condições + ações) que é a base dos próximos recursos. Não tem dependências
-externas (apenas a biblioteca padrão).
+Ferramenta de manutenção de arquivos para Windows, em Python. O comando `limpar` remove da pasta
+de **Downloads** os arquivos e pastas sem atividade há mais de N dias, e o comando `rodar`
+executa **regras** (condições + ações, como mover PDFs ou apagar instaladores) descritas em um
+arquivo YAML. Ele nasceu de uma necessidade real do trabalho, onde a pasta de Downloads enchia
+sem ninguém perceber. A única dependência é o PyYAML, para ler o arquivo de regras.
 
 ## Uso
 
-O programa é organizado em **comandos**. Por enquanto existe o `limpar`, e a ideia é que outros
-sejam adicionados.
+O programa é organizado em **comandos**: `limpar`, `rodar` e `listar`.
 
 ```bash
 # Simulação: lista o que seria apagado, sem apagar nada (comece sempre por aqui)
@@ -48,14 +47,76 @@ funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas 
 | `--pasta CAMINHO` | Pasta a limpar | Downloads do usuário |
 
 **Código de saída:** `0` quando tudo ocorreu bem, `1` se houve algum erro ou a pasta não existe,
-e `2` para argumentos inválidos. Isso permite usar o resultado em agendadores e pipelines.
+e `2` para argumentos inválidos ou uma pasta protegida. Isso permite usar o resultado em
+agendadores e pipelines.
 
 Para instalar como comando: `pip install .` e depois `zelador limpar --dry-run`.
+
+## Regras em arquivo YAML
+
+Cada regra diz *onde* olhar, *quais itens* escolher e *o que fazer*:
+
+```yaml
+versao: 1
+regras:
+  - nome: Organizar PDFs
+    pasta: "{downloads}"
+    condicoes:
+      extensoes: [pdf]
+      idade_dias: 1
+    acao:
+      mover: ~/Documents/PDFs
+
+  - nome: Limpar downloads parados
+    pasta: "{downloads}"
+    condicoes:
+      idade_dias: 30
+    acao: apagar
+```
+
+```bash
+zelador listar --config regras.yml            # mostra o que cada regra faz e aponta problemas
+zelador rodar --config regras.yml --dry-run   # simula, sem alterar nada
+zelador rodar --config regras.yml             # executa as regras, na ordem do arquivo
+```
+
+Sem `--config`, o Zelador procura `regras.yml` na pasta `Zelador` dentro de `%APPDATA%`. Há um
+modelo comentado em [`exemplos/regras.yml`](exemplos/regras.yml).
+
+**Condições** (todas as de uma regra precisam ser verdadeiras):
+
+| Condição | Valor | Exemplo |
+|---|---|---|
+| `idade_dias` | inteiro, mínimo 1: sem atividade há mais de N dias | `7` |
+| `extensoes` | lista de extensões, sem diferenciar maiúsculas | `[pdf, docx]` |
+| `tamanho_min`, `tamanho_max` | bytes, ou texto com unidade (KB, MB, GB, TB; base 1024) | `50MB` |
+| `nome` | expressão regular sobre o nome, sem diferenciar maiúsculas | `"^relat"` |
+
+**Ações:** `apagar`, ou `mover: <pasta de destino>`. Mover nunca sobrescreve: se o nome já existe
+no destino, o arquivo novo vira `nome (1).ext`.
+
+**Caminhos** devem ser absolutos. Use `{downloads}` (a pasta Downloads real do usuário), `~` (pasta
+pessoal) ou `${VARIAVEL}` (variável de ambiente).
+
+**Códigos de saída de `rodar` e `listar`:** `0` tudo certo, `1` alguma regra foi ignorada por ser
+inválida ou houve erro ao executar, `2` o arquivo não existe ou o YAML está inválido. O `listar`
+serve também para validar o arquivo antes de agendar.
+
+Cuidado com uma pegadinha do YAML: `no`, `yes`, `on` e `off` sem aspas viram falso/verdadeiro. O
+Zelador avisa quando isso acontece numa lista de extensões; para a extensão `no`, escreva `["no"]`.
 
 ## Decisões técnicas
 
 - **Segurança primeiro:** o modo `--dry-run` mostra exatamente o que seria apagado, e
   `--dias 0` ou negativo é rejeitado (apagaria tudo).
+- **Pastas protegidas:** nenhuma regra pode atuar na raiz de um disco, na pasta pessoal inteira,
+  na pasta que contém os usuários nem em pastas do sistema (Windows, Arquivos de Programas). A
+  checagem resolve atalhos, então um atalho para `C:\Windows` também é recusado. Subpastas da
+  pasta pessoal, como Downloads, são permitidas.
+- **O arquivo de regras é entrada não confiável:** é lido como YAML "seguro" (nunca executa
+  código), chaves repetidas e campos desconhecidos são erros (um erro de digitação em
+  `idade_dias` deixaria a regra mais ampla do que o autor quis), e caminhos relativos são
+  recusados. Uma regra inválida é ignorada com um aviso e as demais continuam.
 - **Não segue atalhos:** symlinks e junctions do Windows são tratados como o próprio atalho.
   Apagar um atalho nunca apaga o conteúdo para onde ele aponta.
 - **Idade real de pastas:** o `mtime` de uma pasta não muda quando um arquivo dentro de uma
@@ -97,17 +158,18 @@ auditoria de vulnerabilidades das dependências (`pip-audit`).
 
 ```
 zelador/
-  cli.py          comandos e opções comuns (ponto de entrada)
-  limpeza.py      comando `limpar` (uma regra do motor: apagar o que é antigo)
-  regras.py       motor de regras: condições (idade, extensão, tamanho, nome) e ações (apagar, mover)
-  arquivos.py     operações sobre arquivos: medir, apagar, mover, formatar tamanho
-  logs.py         configuração e rotação dos logs
-  __main__.py     permite `python -m zelador`
-tests/
-  test_cli.py     testes da linha de comando
-  test_limpeza.py testes do comando `limpar`
-  test_regras.py  testes do motor de regras
-  test_arquivos.py testes de mover/numerar arquivos
+  cli.py             comandos e opções comuns (ponto de entrada)
+  limpeza.py         comando `limpar` (uma regra do motor: apagar o que é antigo)
+  comando_regras.py  comandos `rodar` e `listar`
+  configuracao.py    leitura e validação do arquivo YAML de regras
+  regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações
+  seguranca.py       pastas em que nenhuma regra pode atuar
+  arquivos.py        operações sobre arquivos: medir, apagar, mover, formatar tamanho
+  caminhos.py        Downloads real do usuário e local do arquivo de regras
+  logs.py            configuração e rotação dos logs
+  __main__.py        permite `python -m zelador`
+exemplos/regras.yml  modelo comentado de arquivo de regras
+tests/               testes de cada módulo (pytest)
 .github/workflows/pipeline.yml
 ```
 

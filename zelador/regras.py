@@ -15,6 +15,7 @@ from typing import Optional, Protocol
 
 from .arquivos import deletar_item, formatar_tamanho, medir_item, mover_item
 from .logs import logger
+from .seguranca import motivo_pasta_protegida, pasta_do_sistema_que_contem
 
 # ------------------------------------------------------------------ item
 
@@ -53,6 +54,9 @@ class IdadeMinima:
     def corresponde(self, item: Item, agora: datetime) -> bool:
         return agora - datetime.fromtimestamp(item.ultima_atividade) > timedelta(days=self.dias)
 
+    def resumo(self) -> str:
+        return f"sem atividade há mais de {self.dias} dia(s)"
+
 
 @dataclass(frozen=True)
 class ExtensaoEm:
@@ -69,6 +73,9 @@ class ExtensaoEm:
 
     def corresponde(self, item: Item, agora: datetime) -> bool:
         return item.extensao in self.extensoes
+
+    def resumo(self) -> str:
+        return "extensão: " + ", ".join(self.extensoes)
 
 
 @dataclass(frozen=True)
@@ -89,6 +96,14 @@ class TamanhoEntre:
         return ((self.minimo is None or item.tamanho >= self.minimo)
                 and (self.maximo is None or item.tamanho <= self.maximo))
 
+    def resumo(self) -> str:
+        if self.minimo is not None and self.maximo is not None:
+            return (f"tamanho entre {formatar_tamanho(self.minimo)} "
+                    f"e {formatar_tamanho(self.maximo)}")
+        if self.minimo is not None:
+            return f"tamanho de pelo menos {formatar_tamanho(self.minimo)}"
+        return f"tamanho de no máximo {formatar_tamanho(self.maximo)}"
+
 
 @dataclass(frozen=True)
 class NomeCorresponde:
@@ -107,6 +122,9 @@ class NomeCorresponde:
     def corresponde(self, item: Item, agora: datetime) -> bool:
         return self._regex.search(item.nome) is not None
 
+    def resumo(self) -> str:
+        return f"nome casa com /{self.padrao}/"
+
 
 # ----------------------------------------------------------------- ações
 
@@ -114,6 +132,9 @@ class NomeCorresponde:
 class Acao(Protocol):
     def descricao(self) -> str:
         """Texto para o log: 'deletado(a)', 'movido(a) para X'..."""
+
+    def resumo(self) -> str:
+        """Texto para listar a regra: 'apagar', 'mover para X'..."""
 
     def aplicar(self, item: Item) -> None:
         """Executa a ação. Levanta OSError em caso de falha."""
@@ -126,6 +147,9 @@ class Acao(Protocol):
 class Apagar:
     def descricao(self) -> str:
         return "deletado(a)"
+
+    def resumo(self) -> str:
+        return "apagar"
 
     def aplicar(self, item: Item) -> None:
         deletar_item(item.caminho)
@@ -143,8 +167,17 @@ def _normalizar(caminho: Path) -> str:
 class Mover:
     destino: Path
 
+    def __post_init__(self):
+        pasta = pasta_do_sistema_que_contem(self.destino)
+        if pasta:
+            raise ValueError(f"não é permitido mover arquivos para dentro de uma pasta do "
+                             f"sistema ({pasta})")
+
     def descricao(self) -> str:
         return f"movido(a) para {self.destino}"
+
+    def resumo(self) -> str:
+        return f"mover para {self.destino}"
 
     def aplicar(self, item: Item) -> None:
         mover_item(item.caminho, self.destino)
@@ -165,6 +198,10 @@ class Regra:
     acao: Acao
 
     def __post_init__(self):
+        motivo = motivo_pasta_protegida(self.pasta)
+        if motivo:
+            raise ValueError(f"a regra '{self.nome}' não pode atuar em {self.pasta}: "
+                             f"é {motivo}")
         self.condicoes = tuple(self.condicoes)
         if not self.condicoes:
             # sem condição, a regra valeria para tudo da pasta (e Apagar esvaziaria a pasta)

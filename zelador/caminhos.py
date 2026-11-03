@@ -1,6 +1,7 @@
 """Caminhos conhecidos do sistema."""
 
 import ctypes
+import os
 import sys
 import uuid
 from ctypes import wintypes
@@ -37,3 +38,12 @@ def obter_pasta_downloads() -> Path:
             pass  # cai no caminho padrão abaixo
 
     return Path.home() / "Downloads"
+
+
+def arquivo_de_regras_padrao() -> Path:
+    """Onde o `rodar` procura as regras quando não se usa --config: a pasta Zelador dentro
+    de APPDATA no Windows, ou ~/.config/zelador nos demais sistemas."""
+    base = os.environ.get("APPDATA")
+    if base:
+        return Path(base) / "Zelador" / "regras.yml"
+    return Path.home() / ".config" / "zelador" / "regras.yml"

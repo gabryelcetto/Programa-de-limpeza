@@ -53,7 +53,11 @@ def executar(args: argparse.Namespace) -> int:
         logger.error("A pasta %s não foi encontrada.", pasta)
         return 1
 
-    resumo = limpar(pasta, args.dias, args.dry_run)
+    try:
+        resumo = limpar(pasta, args.dias, args.dry_run)
+    except ValueError as erro:  # pasta protegida (raiz do disco, pasta do sistema...)
+        logger.error("%s", erro)
+        return 2
 
     verbo = "seriam apagados" if args.dry_run else "apagados"
     logger.info("Concluído: %d %s (%s), %d mantidos, %d erros.",
