@@ -80,17 +80,26 @@ def _discos() -> tuple:
     return tuple(discos)
 
 
+def coletar_memoria() -> UsoMemoria:
+    ram = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    return UsoMemoria(ram.total, ram.used, ram.percent, swap.total, swap.used)
+
+
+def coletar_discos() -> tuple:
+    return _discos()
+
+
+def segundos_ligado() -> float:
+    return max(0.0, time.time() - psutil.boot_time())
+
+
 def coletar_status(intervalo_cpu: float = 0.5) -> Status:
     """Fotografia do sistema. O uso de CPU é medido durante `intervalo_cpu` segundos."""
     cpu = UsoCpu(psutil.cpu_percent(interval=intervalo_cpu),
                  psutil.cpu_count(logical=True) or 1,
                  psutil.cpu_count(logical=False))
-
-    ram = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    memoria = UsoMemoria(ram.total, ram.used, ram.percent, swap.total, swap.used)
-
-    return Status(cpu, memoria, _discos(), max(0.0, time.time() - psutil.boot_time()))
+    return Status(cpu, coletar_memoria(), coletar_discos(), segundos_ligado())
 
 
 # ------------------------------------------------------------- processos
