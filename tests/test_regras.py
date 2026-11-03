@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from limpeza_downloads import arquivos
-from limpeza_downloads.regras import (
+from zelador import arquivos
+from zelador.regras import (
     Apagar,
     ExtensaoEm,
     IdadeMinima,

@@ -1,12 +1,14 @@
-# Limpeza de Downloads
+# Zelador
 
 ![Pipeline](../../actions/workflows/pipeline.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Automação em Python que remove da pasta de **Downloads** os arquivos e pastas sem atividade há
-mais de N dias. Foi criada para uso real no trabalho, onde a pasta de Downloads enchia sem
-ninguém perceber, e roda sem dependências externas (apenas a biblioteca padrão).
+Ferramenta de manutenção de arquivos para Windows, em Python. Hoje o comando `limpar` remove da
+pasta de **Downloads** os arquivos e pastas sem atividade há mais de N dias. Ele nasceu de uma
+necessidade real do trabalho, onde a pasta de Downloads enchia sem ninguém perceber, e roda sobre
+um motor de regras (condições + ações) que é a base dos próximos recursos. Não tem dependências
+externas (apenas a biblioteca padrão).
 
 ## Uso
 
@@ -15,20 +17,20 @@ sejam adicionados.
 
 ```bash
 # Simulação: lista o que seria apagado, sem apagar nada (comece sempre por aqui)
-python -m limpeza_downloads limpar --dry-run
+python -m zelador limpar --dry-run
 
 # Apaga o que está há mais de 7 dias (padrão) sem atividade
-python -m limpeza_downloads limpar
+python -m zelador limpar
 
 # Muda o limite e a pasta
-python -m limpeza_downloads limpar --dias 14 --pasta "D:\Temporarios"
+python -m zelador limpar --dias 14 --pasta "D:\Temporarios"
 
 # Ajuda geral e de um comando
-python -m limpeza_downloads --help
-python -m limpeza_downloads limpar --help
+python -m zelador --help
+python -m zelador limpar --help
 ```
 
-Chamadas sem comando (`python -m limpeza_downloads --dry-run`, ou sem nenhum argumento) continuam
+Chamadas sem comando (`python -m zelador --dry-run`, ou sem nenhum argumento) continuam
 funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas antes dos comandos.
 
 **Opções comuns a todos os comandos**
@@ -36,7 +38,7 @@ funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas 
 | Opção | Descrição | Padrão |
 |---|---|---|
 | `--dry-run` | Apenas mostra o que seria feito, sem alterar nada | desligado |
-| `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\LimpezaDownloads\logs` |
+| `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\Zelador\logs` |
 
 **Comando `limpar`**
 
@@ -48,7 +50,7 @@ funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas 
 **Código de saída:** `0` quando tudo ocorreu bem, `1` se houve algum erro ou a pasta não existe,
 e `2` para argumentos inválidos. Isso permite usar o resultado em agendadores e pipelines.
 
-Para instalar como comando: `pip install .` e depois `limpeza-downloads limpar --dry-run`.
+Para instalar como comando: `pip install .` e depois `zelador limpar --dry-run`.
 
 ## Decisões técnicas
 
@@ -70,14 +72,14 @@ Para instalar como comando: `pip install .` e depois `limpeza-downloads limpar -
 
 ## Agendando no Windows
 
-Com o pacote instalado (`pip install .`), o comando `limpeza-downloads` funciona de qualquer
+Com o pacote instalado (`pip install .`), o comando `zelador` funciona de qualquer
 pasta. Para rodar todo dia às 09:00 pelo Agendador de Tarefas:
 
 ```powershell
-schtasks /Create /SC DAILY /ST 09:00 /TN "Limpeza Downloads" /TR "limpeza-downloads limpar" /F
+schtasks /Create /SC DAILY /ST 09:00 /TN "Zelador" /TR "zelador limpar" /F
 ```
 
-Teste antes com `limpeza-downloads limpar --dry-run` e confira o log gerado.
+Teste antes com `zelador limpar --dry-run` e confira o log gerado.
 
 ## Desenvolvimento
 
@@ -94,13 +96,13 @@ auditoria de vulnerabilidades das dependências (`pip-audit`).
 ## Estrutura
 
 ```
-limpeza_downloads/
+zelador/
   cli.py          comandos e opções comuns (ponto de entrada)
   limpeza.py      comando `limpar` (uma regra do motor: apagar o que é antigo)
   regras.py       motor de regras: condições (idade, extensão, tamanho, nome) e ações (apagar, mover)
   arquivos.py     operações sobre arquivos: medir, apagar, mover, formatar tamanho
   logs.py         configuração e rotação dos logs
-  __main__.py     permite `python -m limpeza_downloads`
+  __main__.py     permite `python -m zelador`
 tests/
   test_cli.py     testes da linha de comando
   test_limpeza.py testes do comando `limpar`

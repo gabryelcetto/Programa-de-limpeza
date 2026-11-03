@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import arquivos, cli, limpeza, logs, regras
+from zelador import arquivos, cli, limpeza, logs, regras
 
 DIA = 24 * 3600
 

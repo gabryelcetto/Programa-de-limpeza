@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import arquivos
+from zelador import arquivos
 
 
 def criar(pasta, nome, conteudo="x"):

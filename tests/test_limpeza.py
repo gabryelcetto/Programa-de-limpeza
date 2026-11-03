@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import arquivos, limpeza, logs, regras
+from zelador import arquivos, limpeza, logs, regras
 
 DIAS = 7
 DIA = 24 * 3600
