@@ -23,7 +23,7 @@ def _opcoes_comuns() -> argparse.ArgumentParser:
 
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="limpeza-downloads",
+        prog="zelador",
         description="Automação de arquivos. Use COMANDO --help para as opções de cada comando.",
     )
     subparsers = parser.add_subparsers(dest="comando", required=True, metavar="COMANDO")

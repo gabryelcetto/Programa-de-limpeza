@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import limpeza, logs
+from zelador import arquivos, limpeza, logs, regras
 
 DIAS = 7
 DIA = 24 * 3600
@@ -18,7 +18,7 @@ DIA = 24 * 3600
 def so_data_de_modificacao(monkeypatch):
     """No Windows o os.utime não altera a data de criação, então os testes
     de idade usam apenas o mtime. A regra da criação é testada à parte."""
-    monkeypatch.setattr(limpeza, "_data_referencia", lambda info: info.st_mtime)
+    monkeypatch.setattr(arquivos, "_data_referencia", lambda info: info.st_mtime)
 
 
 def envelhecer(caminho, dias):
@@ -41,7 +41,7 @@ def test_apaga_arquivo_antigo_e_mantem_recente(tmp_path):
 
     assert not antigo.exists()
     assert recente.exists()
-    assert (resumo.apagados, resumo.ignorados, resumo.erros) == (1, 1, 0)
+    assert (resumo.aplicados, resumo.ignorados, resumo.erros) == (1, 1, 0)
 
 
 def test_dry_run_nao_apaga_nada(tmp_path):
@@ -50,8 +50,8 @@ def test_dry_run_nao_apaga_nada(tmp_path):
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=True)
 
     assert antigo.exists()
-    assert resumo.apagados == 1
-    assert resumo.bytes_liberados == 5
+    assert resumo.aplicados == 1
+    assert resumo.bytes == 5
 
 
 def test_pasta_com_arquivo_recente_dentro_e_mantida(tmp_path):
@@ -64,7 +64,7 @@ def test_pasta_com_arquivo_recente_dentro_e_mantida(tmp_path):
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
 
     assert pasta.exists()
-    assert resumo.apagados == 0
+    assert resumo.aplicados == 0
     assert resumo.ignorados == 1
 
 
@@ -79,7 +79,7 @@ def test_pasta_inteira_antiga_e_apagada_com_tamanho_somado(tmp_path):
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
 
     assert not pasta.exists()
-    assert resumo.bytes_liberados == 5
+    assert resumo.bytes == 5
 
 
 def test_apaga_arquivo_somente_leitura(tmp_path):
@@ -117,7 +117,7 @@ def test_symlink_para_pasta_remove_so_o_atalho(tmp_path):
     except OSError:
         pytest.skip("sem permissão para criar symlinks neste ambiente")
 
-    limpeza.deletar_item(atalho)
+    arquivos.deletar_item(atalho)
 
     assert not atalho.exists() and not atalho.is_symlink()
     assert arquivo_destino.exists()
@@ -135,7 +135,7 @@ def test_junction_para_pasta_remove_so_o_atalho(tmp_path):
     subprocess.run(["cmd", "/c", "mklink", "/J", str(atalho), str(destino)],
                    check=True, capture_output=True)
 
-    limpeza.deletar_item(atalho)
+    arquivos.deletar_item(atalho)
 
     assert not atalho.exists()
     assert arquivo_destino.exists()
@@ -144,18 +144,18 @@ def test_junction_para_pasta_remove_so_o_atalho(tmp_path):
 def test_erro_ao_apagar_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
     ruim = criar_arquivo(tmp_path, "a_ruim.txt", dias=10)
     bom = criar_arquivo(tmp_path, "b_bom.txt", dias=10)
-    apagar_de_verdade = limpeza.deletar_item
+    apagar_de_verdade = regras.deletar_item
 
     def apagar(item):
         if item.name == "a_ruim.txt":
             raise PermissionError("arquivo em uso")
         apagar_de_verdade(item)
 
-    monkeypatch.setattr(limpeza, "deletar_item", apagar)
+    monkeypatch.setattr(regras, "deletar_item", apagar)
 
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
 
-    assert (resumo.apagados, resumo.erros) == (1, 1)
+    assert (resumo.aplicados, resumo.erros) == (1, 1)
     assert ruim.exists()
     assert not bom.exists()
 
@@ -163,26 +163,17 @@ def test_erro_ao_apagar_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
 def test_pasta_vazia_nao_quebra(tmp_path):
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
 
-    assert (resumo.apagados, resumo.ignorados, resumo.erros) == (0, 0, 0)
+    assert (resumo.aplicados, resumo.ignorados, resumo.erros) == (0, 0, 0)
 
 
 def test_data_referencia_usa_o_maior_entre_modificacao_e_criacao(monkeypatch):
     # desfaz o patch do autouse para testar a função real
     monkeypatch.undo()
     info = SimpleNamespace(st_mtime=100.0, st_birthtime=500.0, st_ctime=0.0)
-    assert limpeza._data_referencia(info) == 500.0
+    assert arquivos._data_referencia(info) == 500.0
 
     info = SimpleNamespace(st_mtime=900.0, st_birthtime=500.0, st_ctime=0.0)
-    assert limpeza._data_referencia(info) == 900.0
-
-
-def test_item_antigo_respeita_o_limite():
-    agora = datetime(2026, 1, 20)
-    antigo = limpeza.Medicao(datetime(2026, 1, 10).timestamp(), 0)
-    recente = limpeza.Medicao(datetime(2026, 1, 18).timestamp(), 0)
-
-    assert limpeza.item_antigo(antigo, agora, 7)
-    assert not limpeza.item_antigo(recente, agora, 7)
+    assert arquivos._data_referencia(info) == 900.0
 
 
 @pytest.mark.parametrize(
@@ -191,7 +182,7 @@ def test_item_antigo_respeita_o_limite():
      (3 * 1024**4, "3.0 TB")],
 )
 def test_formatar_tamanho(bytes_, esperado):
-    assert limpeza._formatar_tamanho(bytes_) == esperado
+    assert arquivos.formatar_tamanho(bytes_) == esperado
 
 
 def test_logs_antigos_sao_removidos_e_pastas_estranhas_ignoradas(tmp_path):

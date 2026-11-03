@@ -11,14 +11,14 @@ from typing import Optional
 DIAS_MANUTENCAO_LOG = 30  # dias para manter os logs antes de deletar
 FORMATO_DATA_LOG = "%Y-%m-%d"
 
-logger = logging.getLogger("limpeza_downloads")
+logger = logging.getLogger("zelador")
 
 
 def pasta_logs_padrao() -> Path:
     """Pasta de logs fixa (independe do diretório de onde o script é chamado)."""
     base = os.environ.get("LOCALAPPDATA")
     if base:
-        return Path(base) / "LimpezaDownloads" / "logs"
+        return Path(base) / "Zelador" / "logs"
     return Path(__file__).resolve().parent / "logs"
 
 

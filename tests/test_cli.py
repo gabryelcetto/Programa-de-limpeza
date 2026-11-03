@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import cli, limpeza, logs
+from zelador import arquivos, cli, limpeza, logs, regras
 
 DIA = 24 * 3600
 
@@ -12,7 +12,7 @@ DIA = 24 * 3600
 @pytest.fixture(autouse=True)
 def so_data_de_modificacao(monkeypatch):
     """Veja o mesmo fixture em test_limpeza.py: no Windows o os.utime não muda a criação."""
-    monkeypatch.setattr(limpeza, "_data_referencia", lambda info: info.st_mtime)
+    monkeypatch.setattr(arquivos, "_data_referencia", lambda info: info.st_mtime)
 
 
 @pytest.fixture(autouse=True)
@@ -137,13 +137,27 @@ def test_erro_na_limpeza_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
     def falhar(item):
         raise PermissionError("arquivo em uso")
 
-    monkeypatch.setattr(limpeza, "deletar_item", falhar)
+    monkeypatch.setattr(regras, "deletar_item", falhar)
 
     codigo = cli.main(["limpar", "--pasta", str(ambiente.downloads),
                        "--log-dir", str(ambiente.pasta_logs)])
 
     assert codigo == 1
     assert ambiente.antigo.exists()
+
+
+def test_relatorio_final_informa_quantidade_tamanho_e_mantidos(ambiente, caplog):
+    cli.main(["limpar", "--pasta", str(ambiente.downloads), "--log-dir", str(ambiente.pasta_logs)])
+
+    assert "Concluído: 1 apagados (1.0 B), 1 mantidos, 0 erros." in caplog.text
+
+
+def test_relatorio_final_da_simulacao_diz_seriam_apagados(ambiente, caplog):
+    cli.main(["limpar", "--dry-run", "--pasta", str(ambiente.downloads),
+              "--log-dir", str(ambiente.pasta_logs)])
+
+    assert "Concluído: 1 seriam apagados (1.0 B), 1 mantidos, 0 erros." in caplog.text
+    assert "[SIMULAÇÃO] Arquivo deletado(a): antigo.txt (1.0 B)" in caplog.text
 
 
 def test_grava_log_do_dia(ambiente):

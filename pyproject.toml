@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "limpeza-downloads"
+name = "zelador"
 version = "1.0.0"
-description = "Remove itens antigos da pasta de Downloads, com modo de simulação e logs."
+description = "Ferramenta de manutenção de arquivos para Windows: limpeza de Downloads com motor de regras."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -15,10 +15,10 @@ dependencies = []
 dev = ["pytest", "ruff", "pip-audit"]
 
 [project.scripts]
-limpeza-downloads = "limpeza_downloads.cli:main"
+zelador = "zelador.cli:main"
 
 [tool.setuptools]
-packages = ["limpeza_downloads"]
+packages = ["zelador"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
