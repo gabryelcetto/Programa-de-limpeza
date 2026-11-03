@@ -230,9 +230,9 @@ def test_o_esquema_e_um_contrato_com_o_html(sistema_falso):
 # ------------------------------------ com o sistema de verdade (sem simulação)
 
 
-def test_retrato_real_e_json_e_plausivel():
+def test_retrato_real_e_json_e_plausivel(esperar_ate):
     with Amostrador(intervalo=0.1, janela=5.0) as amostras:
-        time.sleep(0.45)
+        esperar_ate(lambda: len(amostras.historico()) >= 2)
         r = dados.retrato(amostras, limite_processos=3)
 
     json.dumps(r, allow_nan=False)

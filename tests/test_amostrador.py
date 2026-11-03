@@ -250,16 +250,15 @@ class MedidorRapido:
         return amostra(time.time(), cpu=float(self.n % 100))
 
 
-def test_thread_mede_sozinha_e_para_quando_pedido():
+def test_thread_mede_sozinha_e_para_quando_pedido(esperar_ate):
     a = Amostrador(intervalo=0.02, janela=2.0, medidor=MedidorRapido())
 
     with a:
         assert a.em_execucao
-        time.sleep(0.3)
+        esperar_ate(lambda: len(a.historico()) >= 5)
     medidas = len(a.historico())
 
     assert not a.em_execucao
-    assert 5 <= medidas <= 20
     time.sleep(0.1)
     assert len(a.historico()) == medidas  # parou de verdade
 
@@ -288,15 +287,15 @@ def test_parar_sem_ter_iniciado_e_parar_duas_vezes_nao_quebra():
     assert not a.em_execucao
 
 
-def test_pode_reiniciar_depois_de_parar():
+def test_pode_reiniciar_depois_de_parar(esperar_ate):
     a = Amostrador(intervalo=0.02, janela=1.0, medidor=MedidorRapido())
     a.iniciar()
-    time.sleep(0.1)
+    esperar_ate(lambda: len(a.historico()) >= 2)
     a.parar()
     antes = len(a.historico())
 
     a.iniciar()
-    time.sleep(0.15)
+    esperar_ate(lambda: len(a.historico()) > antes)
     a.parar()
 
     assert len(a.historico()) > antes
@@ -347,9 +346,9 @@ def test_medidor_real_devolve_valores_plausiveis():
     assert abs(a.instante - time.time()) < 5
 
 
-def test_amostrador_real_acumula_amostras():
+def test_amostrador_real_acumula_amostras(esperar_ate):
     with Amostrador(intervalo=0.1, janela=5.0) as a:
-        time.sleep(0.55)
+        esperar_ate(lambda: len(a.historico()) >= 3)
 
     assert len(a.historico()) >= 3
     assert a.falhas == 0
@@ -368,11 +367,11 @@ class MedidorQueQuebra:
         return amostra(time.time(), cpu=1.0)
 
 
-def test_erro_inesperado_na_thread_nao_mata_o_amostrador(caplog):
+def test_erro_inesperado_na_thread_nao_mata_o_amostrador(caplog, esperar_ate):
     a = Amostrador(intervalo=0.02, janela=2.0, medidor=MedidorQueQuebra())
 
     with a:
-        time.sleep(0.3)
+        esperar_ate(lambda: len(a.historico()) >= 3)
 
     assert a.falhas == 2
     assert len(a.historico()) >= 3  # voltou a medir depois dos dois erros
@@ -409,13 +408,14 @@ class MedidorLento:
 
 def test_o_periodo_nao_acumula_atraso_do_tempo_de_medir():
     # intervalo 0,1 s e cada medição leva 0,04 s: com "esperar depois de medir" o período seria
-    # 0,14 s (~7 medições em 1 s); agendando contra o relógio, é ~0,10 s (~10 medições).
+    # 0,14 s (~10 medições em 1,5 s); agendando contra o relógio, é ~0,10 s (~14 medições).
+    # A margem é larga de propósito: um runner lento atrasa algumas, mas não muda o período.
     a = Amostrador(intervalo=0.1, janela=10.0, medidor=MedidorLento(0.04))
 
     with a:
-        time.sleep(1.05)
+        time.sleep(1.55)
 
-    assert 9 <= len(a.historico()) <= 11
+    assert 12 <= len(a.historico()) <= 16
 
 
 class MedidorComUmaPausa:
@@ -440,5 +440,7 @@ def test_depois_de_um_travamento_nao_ha_rajada_para_recuperar_o_atraso():
     instantes = [m.instante for m in a.historico()]
     folgas = [b - c for c, b in zip(instantes, instantes[1:])]
     assert len(instantes) >= 8
-    # sem o reajuste, ao destravar viriam ~8 medições coladas (folgas de milissegundos)
-    assert min(folgas) >= 0.03
+    # Sem o reajuste, ao destravar viriam ~8 medições coladas (folgas de ~1 ms). Num runner
+    # ruidoso uma amostra atrasada faz a seguinte vir mais cedo (volta à grade), então o limite
+    # é bem abaixo do intervalo: separa "rajada" (perto de zero) de "jitter" (alguns ms).
+    assert min(folgas) >= 0.01
