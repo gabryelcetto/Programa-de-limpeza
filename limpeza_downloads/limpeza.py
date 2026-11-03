@@ -1,6 +1,5 @@
 import argparse
 import ctypes
-import logging
 import os
 import shutil
 import stat
@@ -11,16 +10,13 @@ from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+
+from .logs import logger
 
 DIAS_LIMITE = 7  # dias sem atividade para considerar um item como antigo
-DIAS_MANUTENCAO_LOG = 30  # dias para manter os logs antes de deletar
-FORMATO_DATA_LOG = "%Y-%m-%d"
 
 # GUID do Known Folder "Downloads" (respeita redirecionamento por OneDrive/GPO)
 FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
-
-logger = logging.getLogger("limpeza_downloads")
 
 
 @dataclass
@@ -67,14 +63,6 @@ def obter_pasta_downloads() -> Path:
             pass  # cai no caminho padrão abaixo
 
     return Path.home() / "Downloads"
-
-
-def pasta_logs_padrao() -> Path:
-    """Pasta de logs fixa (independe do diretório de onde o script é chamado)."""
-    base = os.environ.get("LOCALAPPDATA")
-    if base:
-        return Path(base) / "LimpezaDownloads" / "logs"
-    return Path(__file__).resolve().parent / "logs"
 
 
 # ------------------------------------------------------- idade dos itens
@@ -210,57 +198,7 @@ def limpar(pasta: Path, dias: int, dry_run: bool) -> Resumo:
     return resumo
 
 
-# ------------------------------------------------------------------ logs
-
-
-def configurar_logging(pasta_log: Path) -> Optional[Path]:
-    """Configura log no console e em <pasta_log>/<data>/log.txt.
-    Se o arquivo não puder ser criado, segue só com o console."""
-    logger.setLevel(logging.DEBUG)
-    logger.handlers.clear()
-    formato = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
-
-    if sys.stderr is not None:
-        if hasattr(sys.stderr, "reconfigure"):
-            sys.stderr.reconfigure(errors="replace")  # nomes de arquivo com caracteres exóticos
-        console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
-        console.setFormatter(formato)
-        logger.addHandler(console)
-
-    try:
-        pasta_dia = pasta_log / datetime.now().strftime(FORMATO_DATA_LOG)
-        pasta_dia.mkdir(parents=True, exist_ok=True)
-        arquivo = pasta_dia / "log.txt"
-        handler = logging.FileHandler(arquivo, encoding="utf-8")
-        handler.setFormatter(formato)
-        logger.addHandler(handler)
-        return arquivo
-    except OSError as erro:
-        logger.warning("Não foi possível criar o log em %s: %s", pasta_log, erro)
-        return None
-
-
-def deletar_logs_antigos(pasta_log: Path) -> None:
-    if not pasta_log.exists():
-        return
-
-    agora = datetime.now()
-    for pasta in pasta_log.iterdir():
-        if not pasta.is_dir():
-            continue
-        try:
-            data_pasta = datetime.strptime(pasta.name, FORMATO_DATA_LOG)
-        except ValueError:
-            continue  # não é uma pasta de log por data; não mexe
-        if agora - data_pasta > timedelta(days=DIAS_MANUTENCAO_LOG):
-            try:
-                shutil.rmtree(pasta)
-            except OSError as erro:
-                logger.warning("Erro ao apagar log antigo %s: %s", pasta.name, erro)
-
-
-# ------------------------------------------------------------------ main
+# ------------------------------------------------------------ subcomando
 
 
 def _dias_validos(texto: str) -> int:
@@ -274,22 +212,25 @@ def _dias_validos(texto: str) -> int:
     return valor
 
 
-def main(argv: Optional[list] = None) -> int:
-    parser = argparse.ArgumentParser(description="Remove itens antigos da pasta de Downloads.")
-    parser.add_argument("--dry-run", action="store_true", help="apenas lista o que seria apagado")
+def registrar(subparsers, comum: argparse.ArgumentParser) -> None:
+    """Registra o subcomando `limpar` no parser principal."""
+    parser = subparsers.add_parser(
+        "limpar",
+        parents=[comum],
+        help="remove itens antigos de uma pasta (padrão: Downloads)",
+        description="Remove itens antigos da pasta de Downloads.",
+    )
     parser.add_argument("--dias", type=_dias_validos, default=DIAS_LIMITE,
                         help="dias sem atividade (mínimo 1; padrão: %(default)s)")
     parser.add_argument("--pasta", type=Path, default=None,
                         help="pasta a limpar (padrão: Downloads do usuário)")
-    parser.add_argument("--log-dir", type=Path, default=None, help="pasta dos logs")
-    args = parser.parse_args(argv)
+    parser.set_defaults(executar=executar)
 
-    pasta_log = args.log_dir or pasta_logs_padrao()
-    arquivo_log = configurar_logging(pasta_log)
 
+def executar(args: argparse.Namespace) -> int:
     pasta = args.pasta or obter_pasta_downloads()
-    logger.info("Processo iniciado%s. Pasta: %s | limite: %d dias | log: %s",
-                " (SIMULAÇÃO)" if args.dry_run else "", pasta, args.dias, arquivo_log)
+    logger.info("Limpeza iniciada%s. Pasta: %s | limite: %d dias",
+                " (SIMULAÇÃO)" if args.dry_run else "", pasta, args.dias)
 
     if not pasta.is_dir():
         logger.error("A pasta %s não foi encontrada.", pasta)
@@ -301,10 +242,4 @@ def main(argv: Optional[list] = None) -> int:
     logger.info("Concluído: %d %s (%s), %d mantidos, %d erros.",
                 resumo.apagados, verbo, _formatar_tamanho(resumo.bytes_liberados),
                 resumo.ignorados, resumo.erros)
-
-    deletar_logs_antigos(pasta_log)
     return 1 if resumo.erros else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

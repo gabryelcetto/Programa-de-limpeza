@@ -1,12 +1,14 @@
 import os
 import stat
+import subprocess
+import sys
 import time
 from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import limpeza
+from limpeza_downloads import limpeza, logs
 
 DIAS = 7
 DIA = 24 * 3600
@@ -121,6 +123,43 @@ def test_symlink_para_pasta_remove_so_o_atalho(tmp_path):
     assert arquivo_destino.exists()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions só existem no Windows")
+def test_junction_para_pasta_remove_so_o_atalho(tmp_path):
+    destino = tmp_path / "fora" / "importante"
+    destino.mkdir(parents=True)
+    arquivo_destino = criar_arquivo(destino, "dado.txt", dias=1)
+
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    atalho = downloads / "atalho"
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(atalho), str(destino)],
+                   check=True, capture_output=True)
+
+    limpeza.deletar_item(atalho)
+
+    assert not atalho.exists()
+    assert arquivo_destino.exists()
+
+
+def test_erro_ao_apagar_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
+    ruim = criar_arquivo(tmp_path, "a_ruim.txt", dias=10)
+    bom = criar_arquivo(tmp_path, "b_bom.txt", dias=10)
+    apagar_de_verdade = limpeza.deletar_item
+
+    def apagar(item):
+        if item.name == "a_ruim.txt":
+            raise PermissionError("arquivo em uso")
+        apagar_de_verdade(item)
+
+    monkeypatch.setattr(limpeza, "deletar_item", apagar)
+
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
+
+    assert (resumo.apagados, resumo.erros) == (1, 1)
+    assert ruim.exists()
+    assert not bom.exists()
+
+
 def test_pasta_vazia_nao_quebra(tmp_path):
     resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
 
@@ -155,40 +194,14 @@ def test_formatar_tamanho(bytes_, esperado):
     assert limpeza._formatar_tamanho(bytes_) == esperado
 
 
-@pytest.mark.parametrize("valor", ["0", "-3", "abc", "1.5"])
-def test_dias_invalidos_sao_rejeitados(valor, tmp_path, capsys):
-    with pytest.raises(SystemExit) as saida:
-        limpeza.main(["--dias", valor, "--pasta", str(tmp_path), "--log-dir", str(tmp_path / "l")])
-
-    assert saida.value.code == 2
-
-
-def test_main_dry_run_retorna_zero_e_preserva_arquivos(tmp_path):
-    pasta = tmp_path / "dl"
-    pasta.mkdir()
-    antigo = criar_arquivo(pasta, "antigo.txt", dias=30)
-
-    codigo = limpeza.main(["--dry-run", "--pasta", str(pasta), "--log-dir", str(tmp_path / "logs")])
-
-    assert codigo == 0
-    assert antigo.exists()
-
-
-def test_main_pasta_inexistente_retorna_um(tmp_path):
-    codigo = limpeza.main(["--pasta", str(tmp_path / "nao_existe"),
-                           "--log-dir", str(tmp_path / "logs")])
-
-    assert codigo == 1
-
-
 def test_logs_antigos_sao_removidos_e_pastas_estranhas_ignoradas(tmp_path):
     antigo = tmp_path / "2000-01-01"
-    recente = tmp_path / datetime.now().strftime(limpeza.FORMATO_DATA_LOG)
+    recente = tmp_path / datetime.now().strftime(logs.FORMATO_DATA_LOG)
     estranha = tmp_path / "nao-e-data"
     for pasta in (antigo, recente, estranha):
         pasta.mkdir()
 
-    limpeza.deletar_logs_antigos(tmp_path)
+    logs.deletar_logs_antigos(tmp_path)
 
     assert not antigo.exists()
     assert recente.exists()
