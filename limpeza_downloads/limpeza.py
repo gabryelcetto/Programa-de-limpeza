@@ -1,28 +1,19 @@
 import argparse
 import ctypes
-import os
-import shutil
-import stat
 import sys
 import uuid
-from collections.abc import Iterator
 from ctypes import wintypes
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from .arquivos import Medicao, deletar_item, formatar_tamanho, medir_item
 from .logs import logger
 
 DIAS_LIMITE = 7  # dias sem atividade para considerar um item como antigo
 
 # GUID do Known Folder "Downloads" (respeita redirecionamento por OneDrive/GPO)
 FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
-
-
-@dataclass
-class Medicao:
-    ultima_atividade: float  # timestamp mais recente do item (e de tudo dentro dele)
-    tamanho: int  # bytes
 
 
 @dataclass
@@ -65,108 +56,8 @@ def obter_pasta_downloads() -> Path:
     return Path.home() / "Downloads"
 
 
-# ------------------------------------------------------- idade dos itens
-
-
-def _data_referencia(info: os.stat_result) -> float:
-    """Maior entre modificação e criação.
-
-    Arquivos baixados/extraídos/copiados costumam manter o mtime original;
-    a data de criação reflete quando o arquivo chegou na máquina.
-    """
-    criacao = getattr(info, "st_birthtime", info.st_ctime)
-    return max(info.st_mtime, criacao)
-
-
-def _eh_link(info: os.stat_result) -> bool:
-    """Symlink ou ponto de reanálise (junction) do Windows."""
-    atributos = getattr(info, "st_file_attributes", 0)
-    return stat.S_ISLNK(info.st_mode) or bool(atributos & stat.FILE_ATTRIBUTE_REPARSE_POINT)
-
-
-def _eh_pasta(info: os.stat_result) -> bool:
-    atributos = getattr(info, "st_file_attributes", 0)
-    return stat.S_ISDIR(info.st_mode) or bool(atributos & stat.FILE_ATTRIBUTE_DIRECTORY)
-
-
-def _percorrer(pasta: Path) -> Iterator[os.stat_result]:
-    """Percorre a pasta sem seguir symlinks nem junctions."""
-    pilha = [str(pasta)]
-    while pilha:
-        atual = pilha.pop()
-        try:
-            entradas = os.scandir(atual)
-        except OSError:
-            continue
-        with entradas:
-            for entrada in entradas:
-                try:
-                    info = entrada.stat(follow_symlinks=False)
-                except OSError:
-                    continue
-                yield info
-                if _eh_pasta(info) and not _eh_link(info):
-                    pilha.append(entrada.path)
-
-
-def medir_item(item: Path) -> Medicao:
-    """Última atividade do item. Para pastas, considera tudo que há dentro:
-    o mtime de uma pasta não muda quando um arquivo aninhado é alterado."""
-    info = item.lstat()
-    ultima = _data_referencia(info)
-    tamanho = 0
-
-    if _eh_pasta(info) and not _eh_link(info):
-        for sub in _percorrer(item):
-            ultima = max(ultima, _data_referencia(sub))
-            if not _eh_pasta(sub):
-                tamanho += sub.st_size
-    else:
-        tamanho = info.st_size
-
-    return Medicao(ultima, tamanho)
-
-
 def item_antigo(medicao: Medicao, agora: datetime, dias: int) -> bool:
     return agora - datetime.fromtimestamp(medicao.ultima_atividade) > timedelta(days=dias)
-
-
-# --------------------------------------------------------------- remoção
-
-
-def _liberar_e_repetir(funcao, caminho, *_):
-    """Handler do rmtree: remove o atributo somente leitura e tenta de novo."""
-    os.chmod(caminho, stat.S_IWRITE)
-    funcao(caminho)
-
-
-def deletar_item(item: Path) -> None:
-    """Apaga o item. Levanta OSError em caso de falha."""
-    info = item.lstat()
-
-    if _eh_pasta(info) and _eh_link(info):
-        # symlink/junction de pasta: remove só o atalho, nunca o destino
-        os.rmdir(item)
-    elif _eh_pasta(info):
-        if sys.version_info >= (3, 12):
-            shutil.rmtree(item, onexc=_liberar_e_repetir)
-        else:
-            shutil.rmtree(item, onerror=_liberar_e_repetir)
-    else:
-        try:
-            item.unlink()
-        except PermissionError:
-            os.chmod(item, stat.S_IWRITE)
-            item.unlink()
-
-
-def _formatar_tamanho(bytes_: int) -> str:
-    valor = float(bytes_)
-    for unidade in ("B", "KB", "MB", "GB"):
-        if valor < 1024:
-            return f"{valor:.1f} {unidade}"
-        valor /= 1024
-    return f"{valor:.1f} TB"
 
 
 def limpar(pasta: Path, dias: int, dry_run: bool) -> Resumo:
@@ -193,7 +84,7 @@ def limpar(pasta: Path, dias: int, dry_run: bool) -> Resumo:
         resumo.apagados += 1
         resumo.bytes_liberados += medicao.tamanho
         logger.info("%s%s deletado(a): %s (%s)", prefixo, tipo, item.name,
-                    _formatar_tamanho(medicao.tamanho))
+                    formatar_tamanho(medicao.tamanho))
 
     return resumo
 
@@ -240,6 +131,6 @@ def executar(args: argparse.Namespace) -> int:
 
     verbo = "seriam apagados" if args.dry_run else "apagados"
     logger.info("Concluído: %d %s (%s), %d mantidos, %d erros.",
-                resumo.apagados, verbo, _formatar_tamanho(resumo.bytes_liberados),
+                resumo.apagados, verbo, formatar_tamanho(resumo.bytes_liberados),
                 resumo.ignorados, resumo.erros)
     return 1 if resumo.erros else 0

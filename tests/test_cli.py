@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import cli, limpeza, logs
+from limpeza_downloads import arquivos, cli, limpeza, logs
 
 DIA = 24 * 3600
 
@@ -12,7 +12,7 @@ DIA = 24 * 3600
 @pytest.fixture(autouse=True)
 def so_data_de_modificacao(monkeypatch):
     """Veja o mesmo fixture em test_limpeza.py: no Windows o os.utime não muda a criação."""
-    monkeypatch.setattr(limpeza, "_data_referencia", lambda info: info.st_mtime)
+    monkeypatch.setattr(arquivos, "_data_referencia", lambda info: info.st_mtime)
 
 
 @pytest.fixture(autouse=True)

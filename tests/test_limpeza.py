@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from limpeza_downloads import limpeza, logs
+from limpeza_downloads import arquivos, limpeza, logs
 
 DIAS = 7
 DIA = 24 * 3600
@@ -18,7 +18,7 @@ DIA = 24 * 3600
 def so_data_de_modificacao(monkeypatch):
     """No Windows o os.utime não altera a data de criação, então os testes
     de idade usam apenas o mtime. A regra da criação é testada à parte."""
-    monkeypatch.setattr(limpeza, "_data_referencia", lambda info: info.st_mtime)
+    monkeypatch.setattr(arquivos, "_data_referencia", lambda info: info.st_mtime)
 
 
 def envelhecer(caminho, dias):
@@ -117,7 +117,7 @@ def test_symlink_para_pasta_remove_so_o_atalho(tmp_path):
     except OSError:
         pytest.skip("sem permissão para criar symlinks neste ambiente")
 
-    limpeza.deletar_item(atalho)
+    arquivos.deletar_item(atalho)
 
     assert not atalho.exists() and not atalho.is_symlink()
     assert arquivo_destino.exists()
@@ -135,7 +135,7 @@ def test_junction_para_pasta_remove_so_o_atalho(tmp_path):
     subprocess.run(["cmd", "/c", "mklink", "/J", str(atalho), str(destino)],
                    check=True, capture_output=True)
 
-    limpeza.deletar_item(atalho)
+    arquivos.deletar_item(atalho)
 
     assert not atalho.exists()
     assert arquivo_destino.exists()
@@ -170,16 +170,16 @@ def test_data_referencia_usa_o_maior_entre_modificacao_e_criacao(monkeypatch):
     # desfaz o patch do autouse para testar a função real
     monkeypatch.undo()
     info = SimpleNamespace(st_mtime=100.0, st_birthtime=500.0, st_ctime=0.0)
-    assert limpeza._data_referencia(info) == 500.0
+    assert arquivos._data_referencia(info) == 500.0
 
     info = SimpleNamespace(st_mtime=900.0, st_birthtime=500.0, st_ctime=0.0)
-    assert limpeza._data_referencia(info) == 900.0
+    assert arquivos._data_referencia(info) == 900.0
 
 
 def test_item_antigo_respeita_o_limite():
     agora = datetime(2026, 1, 20)
-    antigo = limpeza.Medicao(datetime(2026, 1, 10).timestamp(), 0)
-    recente = limpeza.Medicao(datetime(2026, 1, 18).timestamp(), 0)
+    antigo = arquivos.Medicao(datetime(2026, 1, 10).timestamp(), 0)
+    recente = arquivos.Medicao(datetime(2026, 1, 18).timestamp(), 0)
 
     assert limpeza.item_antigo(antigo, agora, 7)
     assert not limpeza.item_antigo(recente, agora, 7)
@@ -191,7 +191,7 @@ def test_item_antigo_respeita_o_limite():
      (3 * 1024**4, "3.0 TB")],
 )
 def test_formatar_tamanho(bytes_, esperado):
-    assert limpeza._formatar_tamanho(bytes_) == esperado
+    assert arquivos.formatar_tamanho(bytes_) == esperado
 
 
 def test_logs_antigos_sao_removidos_e_pastas_estranhas_ignoradas(tmp_path):
