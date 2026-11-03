@@ -374,3 +374,43 @@ def test_mover_para_a_pasta_pessoal_e_permitido(sistema_falso):
 def test_resumo_das_acoes(tmp_path):
     assert Apagar().resumo() == "apagar"
     assert Mover(tmp_path / "x").resumo() == f"mover para {tmp_path / 'x'}"
+
+
+# ----------------------------------------------------- simulação silenciosa
+
+
+def test_detalhar_falso_nao_registra_uma_linha_por_item(tmp_path, caplog):
+    for nome in ("a.txt", "b.txt", "c.txt"):
+        criar(tmp_path, nome, 10)
+
+    with caplog.at_level("INFO", logger="zelador"):
+        executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), dry_run=True,
+                       detalhar=False)
+
+    assert "deletado(a)" not in caplog.text
+
+
+def test_detalhar_padrao_continua_registrando_cada_item(tmp_path, caplog):
+    criar(tmp_path, "a.txt", 10)
+
+    with caplog.at_level("INFO", logger="zelador"):
+        executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), dry_run=True)
+
+    assert "[SIMULAÇÃO] Arquivo deletado(a): a.txt" in caplog.text
+
+
+def test_detalhar_falso_nao_muda_o_resumo_e_ainda_registra_erros(tmp_path, caplog):
+    criar(tmp_path, "a.txt", 10, "12345")
+
+    class Quebra(Apagar):
+        def aplicar(self, item):
+            raise PermissionError("em uso")
+
+    com = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), dry_run=True)
+    sem = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), dry_run=True,
+                         detalhar=False)
+    with caplog.at_level("ERROR", logger="zelador"):
+        erro = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Quebra()), detalhar=False)
+
+    assert (com.aplicados, com.bytes) == (sem.aplicados, sem.bytes) == (1, 5)
+    assert erro.erros == 1 and "Erro em a.txt" in caplog.text
