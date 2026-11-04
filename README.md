@@ -13,7 +13,7 @@ e o psutil (leitura dos discos).
 
 ## Uso
 
-O programa é organizado em **comandos**: `limpar`, `rodar` e `listar`.
+O programa é organizado em **comandos**: `limpar`, `rodar`, `listar`, `modelos` e `iniciar`.
 
 ```bash
 # Simulação: lista o que seria enviado para a Lixeira, sem mexer em nada (comece sempre por aqui)
@@ -58,6 +58,41 @@ e `2` para argumentos inválidos ou uma pasta protegida. Isso permite usar o res
 agendadores e pipelines.
 
 Para instalar como comando: `pip install .` e depois `zelador limpar --dry-run`.
+
+## Começando com modelos prontos
+
+Você não precisa escrever o YAML do zero. O `iniciar` cria o arquivo de regras a partir de modelos
+prontos, com comentários explicando cada regra, para você editar depois:
+
+```bash
+zelador modelos                                  # lista os modelos disponíveis
+zelador iniciar                                  # cria o arquivo com os modelos recomendados
+zelador iniciar --modelo organizar-pdfs --modelo organizar-imagens
+zelador iniciar --imprimir                       # só mostra na tela, sem gravar nada
+```
+
+| Modelo | O que faz |
+|---|---|
+| `organizar-pdfs` (recomendado) | move os PDFs de Downloads para `Documentos/PDFs` |
+| `organizar-imagens` | move fotos e imagens para `Imagens/Downloads` |
+| `organizar-documentos` | move Word, Excel e PowerPoint para `Documentos/Baixados` |
+| `limpar-instaladores` (recomendado) | envia para a Lixeira `.exe`/`.msi` grandes com mais de 3 dias |
+| `limpar-downloads-parados` (recomendado) | envia para a Lixeira o que está parado há mais de 30 dias |
+
+O arquivo é gravado em `%APPDATA%\Zelador\regras.yml`, que é onde o `rodar` e o `listar` procuram
+sem precisar de `--config`. Depois: `zelador listar`, `zelador rodar --dry-run` e, quando estiver
+satisfeito, `zelador rodar`.
+
+Cuidados embutidos:
+
+- **Nunca sobrescreve** um arquivo existente. Com `--forcar`, guarda antes uma cópia datada
+  (`regras.yml.20261104-153012.bak`, nunca substituindo uma cópia anterior).
+- **Grava de forma atômica**: se algo falhar no meio, o arquivo original continua intacto.
+- **Nenhum modelo apaga de vez**: só movem ou mandam para a Lixeira, que têm volta. Isso é garantido
+  por teste.
+- **A ordem é decidida pelo programa**: quem organiza roda antes de quem limpa, para a limpeza
+  genérica nunca pegar o que acabou de ser organizado (um PDF de 40 dias é movido, não descartado).
+- Os destinos usam as pastas **reais** do Windows (`{documentos}`, `{imagens}`), mesmo no OneDrive.
 
 ## Regras em arquivo YAML
 
@@ -189,6 +224,8 @@ zelador/
   cli.py             comandos e opções comuns (ponto de entrada)
   limpeza.py         comando `limpar` (uma regra do motor: tirar o que é antigo, via Lixeira)
   comando_regras.py  comandos `rodar` e `listar`
+  comando_modelos.py comandos `modelos` e `iniciar`
+  modelos.py         os modelos prontos de regras e o gerador do arquivo
   discos.py          leitura dos discos (psutil)
   painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
   opcoes.py          opções de linha de comando compartilhadas (`--dry-run`)
