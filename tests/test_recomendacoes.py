@@ -6,7 +6,7 @@ from pathlib import Path
 import psutil
 import pytest
 
-from zelador import arquivos, sistema
+from zelador import arquivos, discos
 from zelador.painel import recomendacoes as rec
 from zelador.painel.recomendacoes import (
     ATENCAO,
@@ -28,15 +28,7 @@ def raiz_de(pasta):
 
 
 def disco(ponto="C:\\", total=200 * GB, percentual=50.0):
-    return sistema.UsoDisco(ponto, ponto, "NTFS", total, int(total * percentual / 100), percentual)
-
-
-def memoria(percentual=50.0, total=16 * GB):
-    return sistema.UsoMemoria(total, int(total * percentual / 100), percentual, 4 * GB, 0)
-
-
-def processo(nome, mb, pid=1):
-    return sistema.Processo(pid, nome, None if mb is None else mb * MB, None)
+    return discos.UsoDisco(ponto, ponto, "NTFS", total, int(total * percentual / 100), percentual)
 
 
 class Simulador:
@@ -53,7 +45,7 @@ class Simulador:
 
 
 def contexto(tmp_path=None, **kw):
-    base = dict(discos=[disco()], memoria=memoria(), segundos_ligado=3 * DIA, processos=[],
+    base = dict(discos=[disco()],
                 pasta_downloads=(tmp_path / "Downloads") if tmp_path else None,
                 pasta_pdfs=(tmp_path / "Docs" / "PDFs") if tmp_path else None,
                 simular=Simulador())
@@ -248,64 +240,6 @@ def test_pdfs_soltos_sem_destino_ou_sem_pasta_nao_recomenda(pasta):
     assert rec.pdfs_soltos(contexto()) == []
 
 
-# ---------------------------------------------------------- memória alta
-
-
-@pytest.mark.parametrize("percentual, esperado", [
-    (89.9, None), (90.0, INFO), (96.9, INFO), (97.0, ATENCAO), (100.0, ATENCAO),
-])
-def test_memoria_alta_por_faixa(percentual, esperado):
-    ctx = contexto(memoria=memoria(percentual))
-
-    assert [r.gravidade for r in rec.memoria_alta(ctx)] == ([esperado] if esperado else [])
-
-
-def test_memoria_alta_lista_os_programas_que_mais_ocupam_somando_os_processos():
-    ctx = contexto(memoria=memoria(92.0), processos=[
-        processo("chrome.exe", 600, 1), processo("chrome.exe", 500, 2),
-        processo("Chrome.exe", 400, 3), processo("code.exe", 900, 4),
-        processo("notepad.exe", 5, 5), processo("a.exe", 1, 6), processo("b.exe", 2, 7)])
-
-    (r,) = rec.memoria_alta(ctx)
-
-    assert r.evidencias[0].startswith("A memória está a 92%")
-    assert r.evidencias[1] == "chrome.exe: 1.5 GB em 3 processos"  # soma sem diferenciar maiúsculas
-    assert r.evidencias[2] == "code.exe: 900.0 MB em 1 processo"
-    assert len(r.evidencias) == 1 + rec.PROGRAMAS_NA_EVIDENCIA
-    assert r.acao is None  # o painel não encerra programas
-    assert "cache" in r.explicacao  # não alarma: valor alto nem sempre é problema
-
-
-def test_processos_do_sistema_e_sem_acesso_ficam_fora_do_ranking():
-    ctx = contexto(memoria=memoria(95.0), processos=[
-        processo("MemCompression", 3000, 1), processo("System", 2000, 2),
-        processo("Registry", 1000, 3), processo("Memory Compression", 900, 4),
-        processo("negado.exe", None, 5), processo("firefox.exe", 300, 6)])
-
-    (r,) = rec.memoria_alta(ctx)
-
-    assert r.evidencias[1:] == ("firefox.exe: 300.0 MB em 1 processo",)
-
-
-def test_memoria_alta_sem_processos_ainda_recomenda_com_o_numero_geral():
-    (r,) = rec.memoria_alta(contexto(memoria=memoria(93.0)))
-
-    assert len(r.evidencias) == 1
-
-
-# ------------------------------------------------------------ tempo ligado
-
-
-@pytest.mark.parametrize("dias, aparece", [(13.9, False), (14, True), (40, True)])
-def test_tempo_ligado(dias, aparece):
-    resultado = rec.tempo_ligado(contexto(segundos_ligado=dias * DIA))
-
-    assert bool(resultado) is aparece
-    if aparece:
-        assert resultado[0].evidencias == (f"Ligado há {int(dias)} dias sem reiniciar",)
-        assert resultado[0].acao is None
-
-
 # ------------------------------------------------------------------ gerar
 
 
@@ -313,8 +247,7 @@ def test_gerar_ordena_por_gravidade_e_depois_por_ganho(pasta):
     raiz = raiz_de(pasta)
     simulador = Simulador(parados=Resumo(aplicados=10, bytes=2 * GB),
                           pdfs=Resumo(aplicados=8, bytes=10 * MB))
-    ctx = contexto(pasta, discos=[disco(raiz, percentual=97.0)], memoria=memoria(98.0),
-                   segundos_ligado=20 * DIA, simular=simulador)
+    ctx = contexto(pasta, discos=[disco(raiz, percentual=97.0)], simular=simulador)
 
     resultado = rec.gerar(ctx)
 
@@ -386,8 +319,7 @@ def test_defeito_de_programacao_nao_e_escondido():
 
 
 def _contexto_cheio(pasta):
-    return contexto(pasta, discos=[disco(raiz_de(pasta), percentual=99.0)], memoria=memoria(99.0),
-                    segundos_ligado=30 * DIA, processos=[processo("a.exe", 500)],
+    return contexto(pasta, discos=[disco(raiz_de(pasta), percentual=99.0)],
                     simular=Simulador(parados=Resumo(aplicados=5, bytes=GB),
                                       pdfs=Resumo(aplicados=6, bytes=MB)))
 
@@ -396,7 +328,7 @@ def test_todas_as_recomendacoes_viram_json_valido(pasta):
     texto = json.dumps(rec.para_dicts(rec.gerar(_contexto_cheio(pasta))), allow_nan=False)
 
     dados = json.loads(texto)
-    assert len(dados) == 5  # disco, downloads, pdfs, memória e tempo ligado
+    assert len(dados) == 3  # disco, downloads e pdfs
     assert {d["gravidade"] for d in dados} <= {INFO, ATENCAO, IMPORTANTE}
     assert all(set(d) == {"id", "titulo", "gravidade", "explicacao", "evidencias", "acao"}
                for d in dados)
@@ -434,7 +366,7 @@ def so_data_de_modificacao(monkeypatch):
 
 
 def _contexto_real(pasta, downloads):
-    return Contexto(discos=[], memoria=memoria(), segundos_ligado=0, processos=[],
+    return Contexto(discos=[],
                     pasta_downloads=downloads, pasta_pdfs=pasta / "Docs" / "PDFs")
 
 
@@ -478,7 +410,7 @@ def test_coletar_contexto_e_gerar_na_maquina_real():
 
     resultado = rec.gerar(ctx)
 
-    assert ctx.memoria.total > 0 and len(ctx.discos) >= 1 and len(ctx.processos) >= 1
+    assert len(ctx.discos) >= 1
     json.dumps(rec.para_dicts(resultado), allow_nan=False)
     assert all(isinstance(r, Recomendacao) for r in resultado)
 

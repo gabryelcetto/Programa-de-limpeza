@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 import psutil
 
-from .. import sistema
+from .. import discos as _discos
 from ..arquivos import formatar_tamanho
 from ..caminhos import obter_pasta_downloads
 from ..regras import Apagar, ExtensaoEm, IdadeMinima, Mover, Regra, Resumo, executar_regra
@@ -42,13 +42,6 @@ DOWNLOADS_DIAS = 30
 DOWNLOADS_BYTES_MINIMOS = 50 * MB  # abaixo disso não vale incomodar
 PDFS_MINIMO = 5
 PDFS_DIAS = 1
-MEMORIA_ALTA = 90.0
-MEMORIA_MUITO_ALTA = 97.0
-DIAS_LIGADO = 14
-PROGRAMAS_NA_EVIDENCIA = 3
-# Processos do próprio Windows: usam memória de propósito e o usuário não pode "fechá-los"
-PROCESSOS_DO_SISTEMA = frozenset({"system", "registry", "memcompression", "memory compression",
-                                  "secure system"})
 
 
 # ----------------------------------------------------------------- tipos
@@ -82,9 +75,6 @@ class Contexto:
     """Tudo que os recomendadores precisam saber, lido uma vez."""
 
     discos: Sequence
-    memoria: sistema.UsoMemoria
-    segundos_ligado: float
-    processos: Sequence
     pasta_downloads: Optional[Path] = None
     pasta_pdfs: Optional[Path] = None  # destino sugerido para organizar PDFs
     simular: Callable[[Regra], Resumo] = _simular
@@ -129,23 +119,6 @@ def _disco_de(caminho: Path, discos: Sequence):
     return melhor[1] if melhor else None
 
 
-@dataclass(frozen=True)
-class _Programa:
-    nome: str
-    memoria: int
-    processos: int
-
-
-def _programas(processos: Sequence) -> list:
-    """Soma a memória dos processos de mesmo nome (um navegador tem dezenas), do maior ao menor."""
-    somas = {}
-    for p in processos:
-        if p.memoria is None or p.nome.casefold() in PROCESSOS_DO_SISTEMA:
-            continue
-        nome, memoria, n = somas.get(p.nome.casefold(), (p.nome, 0, 0))
-        somas[p.nome.casefold()] = (nome, memoria + p.memoria, n + 1)
-    programas = [_Programa(*valor) for valor in somas.values()]
-    return sorted(programas, key=lambda p: p.memoria, reverse=True)
 
 
 # ------------------------------------------------------------ recomendadores
@@ -215,42 +188,7 @@ def pdfs_soltos(ctx: Contexto) -> list:
     )]
 
 
-def memoria_alta(ctx: Contexto) -> list:
-    memoria = ctx.memoria
-    if memoria.percentual < MEMORIA_ALTA:
-        return []
-    evidencias = [f"A memória está a {memoria.percentual:.0f}% "
-                  f"({formatar_tamanho(memoria.usada)} de {formatar_tamanho(memoria.total)})"]
-    for programa in _programas(ctx.processos)[:PROGRAMAS_NA_EVIDENCIA]:
-        plural = "processo" if programa.processos == 1 else "processos"
-        evidencias.append(f"{programa.nome}: {formatar_tamanho(programa.memoria)} em "
-                          f"{programa.processos} {plural}")
-    return [Recomendacao(
-        id="memoria-alta",
-        titulo="A memória está bem ocupada",
-        gravidade=ATENCAO if memoria.percentual >= MEMORIA_MUITO_ALTA else INFO,
-        explicacao=("O Windows usa a memória livre como cache, então um valor alto nem sempre é "
-                    "problema. Se o PC estiver lento, feche os programas que você não está usando "
-                    "(os que mais ocupam estão listados)."),
-        evidencias=tuple(evidencias),
-    )]
-
-
-def tempo_ligado(ctx: Contexto) -> list:
-    dias = ctx.segundos_ligado / 86400
-    if dias < DIAS_LIGADO:
-        return []
-    return [Recomendacao(
-        id="tempo-ligado",
-        titulo="O PC está ligado há bastante tempo",
-        gravidade=INFO,
-        explicacao=("Reiniciar de vez em quando aplica atualizações pendentes do Windows e libera "
-                    "memória acumulada por programas abertos há muito tempo."),
-        evidencias=(f"Ligado há {int(dias)} dias sem reiniciar",),
-    )]
-
-
-RECOMENDADORES = (disco_cheio, downloads_parados, pdfs_soltos, memoria_alta, tempo_ligado)
+RECOMENDADORES = (disco_cheio, downloads_parados, pdfs_soltos)
 
 
 # ------------------------------------------------------------------ público
@@ -271,13 +209,10 @@ def gerar(contexto: Contexto, recomendadores: Optional[Sequence] = None) -> list
 
 def coletar_contexto(pasta_downloads: Optional[Path] = None,
                      pasta_pdfs: Optional[Path] = None) -> Contexto:
-    """Lê o estado real da máquina (leva ~1 s, sobretudo pela lista de processos)."""
+    """Lê o estado real da máquina: os discos e a pasta Downloads."""
     downloads = pasta_downloads or obter_pasta_downloads()
     return Contexto(
-        discos=sistema.coletar_discos(),
-        memoria=sistema.coletar_memoria(),
-        segundos_ligado=sistema.segundos_ligado(),
-        processos=sistema.listar_processos("memoria", 1000),
+        discos=_discos.coletar_discos(),
         pasta_downloads=downloads if downloads.is_dir() else None,
         pasta_pdfs=pasta_pdfs or Path.home() / "Documents" / "PDFs",
     )

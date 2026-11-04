@@ -162,7 +162,8 @@ zelador/
   cli.py             comandos e opções comuns (ponto de entrada)
   limpeza.py         comando `limpar` (uma regra do motor: apagar o que é antigo)
   comando_regras.py  comandos `rodar` e `listar`
-  sistema.py         leitura de discos, memória e processos (psutil), usada pelas recomendações
+  discos.py          leitura dos discos (psutil)
+  painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
   opcoes.py          opções de linha de comando compartilhadas (`--dry-run`)
   configuracao.py    leitura e validação do arquivo YAML de regras
   regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações
