@@ -5,11 +5,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import comando_regras, comando_sistema, limpeza, logs
+from . import comando_regras, limpeza, logs
 
 # Módulos que oferecem `registrar(subparsers, comum)`; cada um define subcomandos.
 # `comum` tem o que todos os comandos aceitam (hoje, --log-dir).
-SUBCOMANDOS = (limpeza, comando_regras, comando_sistema)
+SUBCOMANDOS = (limpeza, comando_regras)
 
 SUBCOMANDO_PADRAO = "limpar"
 

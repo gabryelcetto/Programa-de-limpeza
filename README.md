@@ -7,14 +7,13 @@
 Ferramenta de manutenção de arquivos para Windows, em Python. O comando `limpar` remove da pasta
 de **Downloads** os arquivos e pastas sem atividade há mais de N dias, e o comando `rodar`
 executa **regras** (condições + ações, como mover PDFs ou apagar instaladores) descritas em um
-arquivo YAML. Os comandos `status` e `processos` mostram o uso de CPU, memória e discos, e os
-processos que mais consomem recursos. Ele nasceu de uma necessidade real do trabalho, onde a
+arquivo YAML, sempre com simulação antes. Ele nasceu de uma necessidade real do trabalho, onde a
 pasta de Downloads enchia sem ninguém perceber. As dependências são o PyYAML (arquivo de regras)
-e o psutil (informações do sistema).
+e o psutil (leitura dos discos).
 
 ## Uso
 
-O programa é organizado em **comandos**: `limpar`, `rodar`, `listar`, `status` e `processos`.
+O programa é organizado em **comandos**: `limpar`, `rodar` e `listar`.
 
 ```bash
 # Simulação: lista o que seria apagado, sem apagar nada (comece sempre por aqui)
@@ -107,32 +106,6 @@ serve também para validar o arquivo antes de agendar.
 Cuidado com uma pegadinha do YAML: `no`, `yes`, `on` e `off` sem aspas viram falso/verdadeiro. O
 Zelador avisa quando isso acontece numa lista de extensões; para a extensão `no`, escreva `["no"]`.
 
-## Informações do sistema
-
-Comandos que só leem; não alteram nada (por isso não têm `--dry-run`):
-
-```bash
-zelador status                                  # CPU, memória, discos e tempo ligado
-zelador processos                               # os 10 que mais usam memória
-zelador processos --top 5 --ordenar cpu         # os 5 que mais usam CPU
-```
-
-```
-CPU       [#-------------------]   6.9%  núcleos: 4 lógicos / 2 físicos
-Memória   [#################---]  87.3%  6.8 GB de 7.7 GB em uso
-Swap      [##------------------]  11.2%  972.5 MB de 8.5 GB em uso
-Ligado    há 19 dias 5h 05min
-
-Discos
-  C:\ NTFS   [###############-----]  76.0%  179.9 GB de 236.7 GB em uso
-```
-
-A CPU é medida durante cerca de meio segundo, e ordenar processos por CPU precisa de duas
-leituras (também ~0,5 s). A CPU de cada processo é a fatia do **total da máquina**, como no
-Gerenciador de Tarefas, e não por núcleo. Processos que o Windows não deixa ler aparecem como
-`n/d`. O processo de PID 0 ("System Idle Process") fica fora da lista: o `%` dele é o tempo
-ocioso, não consumo.
-
 ## Decisões técnicas
 
 - **Segurança primeiro:** o modo `--dry-run` mostra exatamente o que seria apagado, e
@@ -189,8 +162,8 @@ zelador/
   cli.py             comandos e opções comuns (ponto de entrada)
   limpeza.py         comando `limpar` (uma regra do motor: apagar o que é antigo)
   comando_regras.py  comandos `rodar` e `listar`
-  comando_sistema.py comandos `status` e `processos` (formatação em texto)
-  sistema.py         coleta de CPU, memória, discos e processos (psutil), sem formatação
+  discos.py          leitura dos discos (psutil)
+  painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
   opcoes.py          opções de linha de comando compartilhadas (`--dry-run`)
   configuracao.py    leitura e validação do arquivo YAML de regras
   regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações

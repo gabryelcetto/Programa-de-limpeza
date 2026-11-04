@@ -216,8 +216,12 @@ class Resumo:
     bytes: int = 0
 
 
-def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime] = None) -> Resumo:
-    """Aplica a regra aos itens da pasta. Um erro em um item não interrompe os demais."""
+def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime] = None,
+                   detalhar: bool = True) -> Resumo:
+    """Aplica a regra aos itens da pasta. Um erro em um item não interrompe os demais.
+
+    `detalhar=False` não registra uma linha de log por item (para simulações só de estimativa,
+    repetidas, como as do painel); erros continuam sendo registrados."""
     resumo = Resumo()
     agora = agora or datetime.now()
     prefixo = "[SIMULAÇÃO] " if dry_run else ""
@@ -247,7 +251,8 @@ def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime
 
         resumo.aplicados += 1
         resumo.bytes += item.tamanho
-        logger.info("%s%s %s: %s (%s)", prefixo, "Pasta" if eh_pasta else "Arquivo",
-                    regra.acao.descricao(), caminho.name, formatar_tamanho(item.tamanho))
+        if detalhar:
+            logger.info("%s%s %s: %s (%s)", prefixo, "Pasta" if eh_pasta else "Arquivo",
+                        regra.acao.descricao(), caminho.name, formatar_tamanho(item.tamanho))
 
     return resumo
