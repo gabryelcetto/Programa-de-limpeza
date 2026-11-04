@@ -5,7 +5,15 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from . import comando_agenda, comando_historico, comando_modelos, comando_regras, limpeza, logs
+from . import (
+    __version__,
+    comando_agenda,
+    comando_historico,
+    comando_modelos,
+    comando_regras,
+    limpeza,
+    logs,
+)
 
 # Módulos que oferecem `registrar(subparsers, comum)`; cada um define subcomandos.
 # `comum` tem o que todos os comandos aceitam (hoje, --log-dir).
@@ -25,6 +33,7 @@ def construir_parser() -> argparse.ArgumentParser:
         prog="zelador",
         description="Automação de arquivos. Use COMANDO --help para as opções de cada comando.",
     )
+    parser.add_argument("--version", action="version", version=f"zelador {__version__}")
     subparsers = parser.add_subparsers(dest="comando", required=True, metavar="COMANDO")
     comum = _opcoes_comuns()
     for modulo in SUBCOMANDOS:
@@ -34,7 +43,7 @@ def construir_parser() -> argparse.ArgumentParser:
 
 def _com_subcomando(argv: list) -> list:
     """Retrocompatibilidade: chamadas sem subcomando (nada, ou só opções) equivalem a `limpar`."""
-    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help", "--version")):
         return [SUBCOMANDO_PADRAO, *argv]
     return argv
 

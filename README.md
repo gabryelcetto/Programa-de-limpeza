@@ -267,6 +267,21 @@ O que ele confere e garante:
 - A tarefa é definida em XML, e não pela linha de comando do `schtasks`, porque a opção `/TR` aceita
   no máximo 261 caracteres e um caminho longo em AppData estoura.
 
+## Gerando o .exe
+
+Um único arquivo, `zelador.exe`, que funciona sem Python instalado (use-o no lugar de `zelador`
+em todos os comandos acima, inclusive no `agendar`, que passa a agendar o próprio `.exe`):
+
+```powershell
+pip install -e . pyinstaller
+powershell -File scripts\gerar-exe.ps1     # gera dist\zelador.exe e mostra o SHA256
+dist\zelador.exe --version
+```
+
+O ícone (`assets/zelador.ico`) é um desenho próprio, gerado por `scripts/gerar-icone.py`
+(precisa do `pillow`). O `.exe` não é assinado digitalmente, então o Windows SmartScreen pode
+mostrar um aviso na primeira execução ("Mais informações" > "Executar assim mesmo").
+
 ## Desenvolvimento
 
 ```bash
