@@ -158,6 +158,81 @@ def test_recusa_atalho_de_pasta_quando_o_lstat_so_diz_que_e_link(tmp_path, monke
 # ------------------------------------------------------------- Lixeira
 
 
+def test_restaurar_devolve_ao_lugar_com_o_nome_original(tmp_path):
+    guardado = criar(tmp_path, "a (1).pdf", "conteudo")
+    original = tmp_path / "pasta" / "a.pdf"
+
+    resultado = arquivos.restaurar_item(guardado, original)
+
+    assert resultado == original  # "a (1).pdf" volta a ser "a.pdf"
+    assert original.read_text() == "conteudo"
+    assert not guardado.exists()
+
+
+def test_restaurar_recria_a_pasta_original_que_sumiu(tmp_path):
+    guardado = criar(tmp_path, "a.txt")
+    original = tmp_path / "x" / "y" / "z" / "a.txt"
+
+    assert arquivos.restaurar_item(guardado, original) == original
+
+
+def test_restaurar_com_o_lugar_ocupado_nao_sobrescreve(tmp_path):
+    guardado = criar(tmp_path, "guardado.txt", "do historico")
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+    ocupante = criar(pasta, "a.txt", "ja estava aqui")
+
+    resultado = arquivos.restaurar_item(guardado, pasta / "a.txt")
+
+    assert resultado == pasta / "a (1).txt"
+    assert resultado.read_text() == "do historico"
+    assert ocupante.read_text() == "ja estava aqui"
+
+
+def test_restaurar_pasta_inteira(tmp_path):
+    guardada = tmp_path / "arquivo" / "projeto (1)"
+    guardada.mkdir(parents=True)
+    criar(guardada, "dado.txt", "oi")
+    original = tmp_path / "projeto"
+
+    resultado = arquivos.restaurar_item(guardada, original)
+
+    assert (resultado / "dado.txt").read_text() == "oi"
+    assert resultado == original
+
+
+def test_restaurar_recusa_atalho_de_pasta(tmp_path):
+    alvo = tmp_path / "alvo"
+    alvo.mkdir()
+    atalho = tmp_path / "atalho"
+    try:
+        atalho.symlink_to(alvo, target_is_directory=True)
+    except OSError:
+        pytest.skip("sem permissão para criar symlinks neste ambiente")
+
+    with pytest.raises(OSError, match="atalho"):
+        arquivos.restaurar_item(atalho, tmp_path / "volta")
+
+    assert alvo.exists()
+
+
+def test_restaurar_falha_no_meio_desfaz_a_copia_parcial(tmp_path, monkeypatch):
+    guardado = criar(tmp_path, "g.txt", "original")
+    original = tmp_path / "volta" / "g.txt"
+
+    def move_quebrado(origem, destino):
+        shutil.copy2(origem, destino)  # copiou, mas não conseguiu apagar a origem
+        raise OSError("disco cheio")
+
+    monkeypatch.setattr(arquivos.shutil, "move", move_quebrado)
+
+    with pytest.raises(OSError, match="disco cheio"):
+        arquivos.restaurar_item(guardado, original)
+
+    assert guardado.read_text() == "original"
+    assert not original.exists()
+
+
 def test_a_lixeira_de_verdade_nunca_e_usada_nos_testes(lixeira_falsa):
     """Rede de segurança: o conftest troca as duas camadas por uma Lixeira falsa."""
     assert arquivos.enviar_para_lixeira == lixeira_falsa.enviar_para_lixeira

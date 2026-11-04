@@ -147,19 +147,18 @@ def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
             return candidato
 
 
-def mover_item(item: Path, pasta_destino: Path) -> Path:
-    """Move o item para a pasta (criada se preciso) e devolve o novo caminho.
-
-    Não sobrescreve nada. Se a movimentação falhar no meio (ex.: entre volumes), a cópia
-    parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
+def _mover_para(item: Path, pasta: Path, nome: str) -> Path:
+    """Move `item` para `pasta/nome` (ou `nome (1)`, `nome (2)`... se já existir) e devolve o novo
+    caminho. Nunca sobrescreve, recusa atalhos de pasta e, se a movimentação falhar no meio (ex.:
+    entre volumes), desfaz a cópia parcial. Levanta OSError em caso de falha."""
     info = item.lstat()
     eh_pasta = _eh_pasta(info)
     # no Linux o lstat de um symlink para pasta não traz o bit de diretório; is_dir() segue o link
     if _eh_link(info) and (eh_pasta or item.is_dir()):
         raise OSError(f"'{item.name}' é um atalho de pasta; atalhos não são movidos")
 
-    pasta_destino.mkdir(parents=True, exist_ok=True)
-    destino = _caminho_livre(pasta_destino / item.name, eh_pasta)
+    pasta.mkdir(parents=True, exist_ok=True)
+    destino = _caminho_livre(pasta / nome, eh_pasta)
     try:
         shutil.move(item, destino)
     except OSError:
@@ -171,6 +170,21 @@ def mover_item(item: Path, pasta_destino: Path) -> Path:
                 pass
         raise
     return destino
+
+
+def mover_item(item: Path, pasta_destino: Path) -> Path:
+    """Move o item para a pasta (criada se preciso) e devolve o novo caminho.
+
+    Não sobrescreve nada. Se a movimentação falhar no meio (ex.: entre volumes), a cópia
+    parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
+    return _mover_para(item, pasta_destino, item.name)
+
+
+def restaurar_item(atual: Path, original: Path) -> Path:
+    """Devolve `atual` ao lugar `original`, com o NOME original (e não o que ele tem agora: um
+    "a (1).pdf" volta a ser "a.pdf"). Se o lugar original estiver ocupado, não sobrescreve: o
+    item volta como "nome (1)". Devolve o caminho em que ele ficou. Levanta OSError."""
+    return _mover_para(atual, original.parent, original.name)
 
 
 def formatar_tamanho(bytes_: int) -> str:
