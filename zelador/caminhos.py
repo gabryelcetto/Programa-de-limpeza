@@ -56,6 +56,15 @@ def obter_pasta_imagens() -> Path:
     return _pasta_conhecida(FOLDERID_PICTURES, "Pictures")
 
 
+def arquivo_de_historico_padrao() -> Path:
+    """Onde o histórico do que o Zelador fez é guardado: ao lado dos logs, em LOCALAPPDATA no
+    Windows (dado da máquina, não do perfil que viaja), ou ~/.local/share/zelador nos demais."""
+    base = os.environ.get("LOCALAPPDATA")
+    if base:
+        return Path(base) / "Zelador" / "historico.jsonl"
+    return Path.home() / ".local" / "share" / "zelador" / "historico.jsonl"
+
+
 def arquivo_de_regras_padrao() -> Path:
     """Onde o `rodar` procura as regras quando não se usa --config: a pasta Zelador dentro
     de APPDATA no Windows, ou ~/.config/zelador nos demais sistemas."""
