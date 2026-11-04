@@ -1,5 +1,6 @@
 """Operações sobre arquivos e pastas: medir idade e tamanho, apagar, mover e formatar."""
 
+import errno
 import os
 import shutil
 import stat
@@ -149,8 +150,13 @@ def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
 
 def _mover_para(item: Path, pasta: Path, nome: str) -> Path:
     """Move `item` para `pasta/nome` (ou `nome (1)`, `nome (2)`... se já existir) e devolve o novo
-    caminho. Nunca sobrescreve, recusa atalhos de pasta e, se a movimentação falhar no meio (ex.:
-    entre volumes), desfaz a cópia parcial. Levanta OSError em caso de falha."""
+    caminho. Nunca sobrescreve e recusa atalhos de pasta. Levanta OSError em caso de falha.
+
+    No mesmo disco é só uma troca de nome, instantânea e sem meio-termo. Entre discos é preciso
+    copiar e depois apagar a origem, e é aí que mora o perigo: uma pasta pode ter sido apagada só
+    em parte (um arquivo aberto em outro programa impede o resto). Por isso a cópia completa NUNCA
+    é desfeita depois que a origem começou a ser apagada: o que não pôde sair fica na origem, o
+    resto fica no destino, e nada se perde."""
     info = item.lstat()
     eh_pasta = _eh_pasta(info)
     # no Linux o lstat de um symlink para pasta não traz o bit de diretório; is_dir() segue o link
@@ -160,15 +166,41 @@ def _mover_para(item: Path, pasta: Path, nome: str) -> Path:
     pasta.mkdir(parents=True, exist_ok=True)
     destino = _caminho_livre(pasta / nome, eh_pasta)
     try:
-        shutil.move(item, destino)
+        os.rename(item, destino)  # no Windows, falha (em vez de sobrescrever) se o nome existir
+        return destino
+    except OSError as erro:
+        if erro.errno != errno.EXDEV:  # não é "outro disco": nada foi feito, nada a desfazer
+            raise
+
+    # outro disco: 1) copia; se a cópia falhar, a origem está intacta e a cópia parcial sai
+    try:
+        if eh_pasta:
+            shutil.copytree(item, destino, symlinks=True)
+        else:
+            shutil.copy2(item, destino, follow_symlinks=False)
     except OSError:
-        if os.path.lexists(item) and os.path.lexists(destino):
+        if os.path.lexists(destino):
             try:
-                # o nome estava livre: o que existe aqui é uma cópia parcial nossa
                 deletar_item(destino)
             except OSError:
                 pass
         raise
+
+    # 2) apaga a origem
+    try:
+        deletar_item(item)
+    except OSError as erro:
+        if not eh_pasta:
+            # um arquivo é apagado de uma vez só: ele continua inteiro na origem, então a cópia
+            # sai, para não ficar duplicado
+            try:
+                deletar_item(destino)
+            except OSError:
+                pass
+            raise
+        raise OSError(f"'{item.name}' foi copiado inteiro para {destino}, mas parte da pasta "
+                      f"original não pôde ser apagada ({erro}). Nada se perdeu: confira as "
+                      f"duas e apague a original quando ela for liberada") from erro
     return destino
 
 

@@ -48,3 +48,12 @@ def test_pasta_de_log_inacessivel_segue_so_com_o_console(tmp_path):
 
     assert arquivo is None
     assert handler_de_arquivo() == []
+
+
+def test_sem_localappdata_os_logs_ficam_na_pasta_do_usuario_e_nao_no_pacote(monkeypatch, tmp_path):
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.setattr(logs.Path, "home", lambda: tmp_path)
+
+    pasta = logs.pasta_logs_padrao()
+
+    assert pasta == tmp_path / ".local" / "state" / "zelador" / "logs"

@@ -206,7 +206,8 @@ class Gravador:
 
     def _abrir_lote(self) -> None:
         agora = self._historico._agora()
-        lote_id = f"{agora:%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:4]}"
+        # 8 dígitos aleatórios: duas execuções no mesmo segundo (agendada e manual) não colidem
+        lote_id = f"{agora:%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:8]}"
         if (self._historico.arquivo.exists()
                 and self._historico.arquivo.stat().st_size > LIMITE_PARA_PODAR):
             try:

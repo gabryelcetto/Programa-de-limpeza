@@ -34,10 +34,10 @@ python -m zelador --help
 python -m zelador limpar --help
 ```
 
-Chamadas sem comando (`python -m zelador --dry-run`, ou sem nenhum argumento) continuam
-funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas antes dos comandos.
-Elas herdam o padrão atual: o que sai de Downloads vai para a **Lixeira**, e não é mais apagado
-de vez.
+Chamadas só com opções (`python -m zelador --dry-run`) continuam funcionando e equivalem a
+`limpar`, para não quebrar tarefas agendadas criadas antes dos comandos. Elas herdam o padrão
+atual: o que sai de Downloads vai para a **Lixeira**, e não é mais apagado de vez. Chamar o
+programa **sem nada** (por exemplo, com duplo clique no `.exe`) só mostra a ajuda: nunca limpa.
 
 **Opção comum a todos os comandos**
 

@@ -1,4 +1,5 @@
-import shutil
+import errno
+import os
 import stat
 import subprocess
 import sys
@@ -85,21 +86,123 @@ def test_mover_pasta_para_dentro_de_si_mesma_falha_sem_perder_nada(tmp_path):
     assert arquivo.read_text() == "importante"
 
 
-def test_falha_no_meio_desfaz_a_copia_parcial(tmp_path, monkeypatch):
+def _simular_outro_disco(monkeypatch):
+    """Faz o rename falhar como entre discos diferentes: o código tem de copiar e apagar."""
+    def rename(origem, destino):
+        raise OSError(errno.EXDEV, "outro disco (simulado)")
+
+    monkeypatch.setattr(arquivos.os, "rename", rename)
+
+
+def test_entre_discos_move_arquivo_copiando_e_apagando(tmp_path, monkeypatch):
+    _simular_outro_disco(monkeypatch)
+    origem = criar(tmp_path, "a.txt", "conteudo")
+
+    resultado = arquivos.mover_item(origem, tmp_path / "destino")
+
+    assert resultado.read_text() == "conteudo"
+    assert not origem.exists()
+
+
+def test_entre_discos_move_pasta_inteira(tmp_path, monkeypatch):
+    _simular_outro_disco(monkeypatch)
+    pasta = tmp_path / "proj"
+    (pasta / "sub").mkdir(parents=True)
+    criar(pasta / "sub", "dado.txt", "oi")
+
+    resultado = arquivos.mover_item(pasta, tmp_path / "destino")
+
+    assert (resultado / "sub" / "dado.txt").read_text() == "oi"
+    assert not pasta.exists()
+
+
+def test_entre_discos_falha_na_copia_desfaz_a_copia_parcial(tmp_path, monkeypatch):
+    _simular_outro_disco(monkeypatch)
     origem = criar(tmp_path, "a.txt", "original")
     destino = tmp_path / "destino"
 
-    def mover_e_falhar(src, dst):
-        shutil.copy2(src, dst)  # simula a cópia entre volumes que falha ao apagar a origem
-        raise PermissionError("não foi possível apagar a origem")
+    def copiar_e_falhar(src, dst, **_):
+        Path(dst).write_text("pela met")  # começou a copiar...
+        raise OSError("disco cheio")  # ...e o disco encheu
 
-    monkeypatch.setattr(arquivos.shutil, "move", mover_e_falhar)
+    monkeypatch.setattr(arquivos.shutil, "copy2", copiar_e_falhar)
+
+    with pytest.raises(OSError, match="disco cheio"):
+        arquivos.mover_item(origem, destino)
+
+    assert origem.read_text() == "original"
+    assert list(destino.iterdir()) == []  # nada de cópia pela metade
+
+
+def test_entre_discos_arquivo_que_nao_sai_da_origem_nao_fica_duplicado(tmp_path, monkeypatch):
+    _simular_outro_disco(monkeypatch)
+    origem = criar(tmp_path, "a.txt", "original")
+    destino = tmp_path / "destino"
+    deletar_real = arquivos.deletar_item
+
+    def deletar(item):
+        if item == origem:
+            raise PermissionError("em uso por outro programa")
+        deletar_real(item)
+
+    monkeypatch.setattr(arquivos, "deletar_item", deletar)
 
     with pytest.raises(PermissionError):
         arquivos.mover_item(origem, destino)
 
     assert origem.read_text() == "original"
-    assert list(destino.iterdir()) == []  # nada de duplicata
+    assert list(destino.iterdir()) == []
+
+
+def test_entre_discos_pasta_apagada_so_em_parte_nao_perde_nenhum_arquivo(tmp_path, monkeypatch):
+    """O defeito que perdia dados: a origem era apagada em parte (um arquivo em uso) e a cópia
+    completa no destino era desfeita em seguida, levando junto os arquivos que já tinham saído."""
+    _simular_outro_disco(monkeypatch)
+    pasta = tmp_path / "proj"
+    pasta.mkdir()
+    for nome in ("1.txt", "2.txt", "3.txt"):
+        criar(pasta, nome, "dado " + nome)
+    deletar_real = arquivos.deletar_item
+
+    def deletar(item):
+        if item == pasta:  # apaga dois e trava no terceiro, que está aberto em outro programa
+            (pasta / "1.txt").unlink()
+            (pasta / "2.txt").unlink()
+            raise PermissionError("3.txt em uso")
+        deletar_real(item)
+
+    monkeypatch.setattr(arquivos, "deletar_item", deletar)
+
+    with pytest.raises(OSError, match="Nada se perdeu"):
+        arquivos.mover_item(pasta, tmp_path / "destino")
+
+    copia = tmp_path / "destino" / "proj"
+    for nome in ("1.txt", "2.txt", "3.txt"):
+        assert (copia / nome).read_text() == "dado " + nome  # a cópia completa ficou
+    assert (pasta / "3.txt").read_text() == "dado 3.txt"
+
+
+def test_nome_ocupado_no_ultimo_instante_nao_apaga_o_arquivo_de_outro(tmp_path, monkeypatch):
+    """Outro programa cria um arquivo com o mesmo nome entre a escolha do nome e a movimentação:
+    o arquivo dele não pode ser apagado como se fosse uma cópia nossa."""
+    origem = criar(tmp_path, "a.txt", "nosso")
+    destino = tmp_path / "destino"
+    destino.mkdir()
+    rename_real = os.rename
+
+    def rename(src, dst):
+        Path(dst).write_text("de outro programa")
+        if os.path.exists(dst) and sys.platform != "win32":
+            raise FileExistsError(errno.EEXIST, "já existe", dst)  # como o Windows faz
+        return rename_real(src, dst)
+
+    monkeypatch.setattr(arquivos.os, "rename", rename)
+
+    with pytest.raises(OSError):
+        arquivos.mover_item(origem, destino)
+
+    assert origem.read_text() == "nosso"
+    assert (destino / "a.txt").read_text() == "de outro programa"
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="junctions só existem no Windows")
@@ -216,15 +319,16 @@ def test_restaurar_recusa_atalho_de_pasta(tmp_path):
     assert alvo.exists()
 
 
-def test_restaurar_falha_no_meio_desfaz_a_copia_parcial(tmp_path, monkeypatch):
+def test_restaurar_entre_discos_com_falha_na_copia_nao_perde_nada(tmp_path, monkeypatch):
+    _simular_outro_disco(monkeypatch)
     guardado = criar(tmp_path, "g.txt", "original")
     original = tmp_path / "volta" / "g.txt"
 
-    def move_quebrado(origem, destino):
-        shutil.copy2(origem, destino)  # copiou, mas não conseguiu apagar a origem
+    def copiar_e_falhar(src, dst, **_):
+        Path(dst).write_text("pela met")
         raise OSError("disco cheio")
 
-    monkeypatch.setattr(arquivos.shutil, "move", move_quebrado)
+    monkeypatch.setattr(arquivos.shutil, "copy2", copiar_e_falhar)
 
     with pytest.raises(OSError, match="disco cheio"):
         arquivos.restaurar_item(guardado, original)

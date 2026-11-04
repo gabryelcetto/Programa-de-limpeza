@@ -42,14 +42,42 @@ def construir_parser() -> argparse.ArgumentParser:
 
 
 def _com_subcomando(argv: list) -> list:
-    """Retrocompatibilidade: chamadas sem subcomando (nada, ou só opções) equivalem a `limpar`."""
-    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help", "--version")):
+    """Retrocompatibilidade: chamadas só com opções (ex.: `--dry-run`) equivalem a `limpar`.
+
+    Chamar SEM NADA não limpa: abrir o programa com duplo clique (ou digitar só `zelador`) não
+    pode mexer em arquivos sem que a pessoa tenha pedido; mostra a ajuda."""
+    if argv and argv[0].startswith("-") and argv[0] not in ("-h", "--help", "--version"):
         return [SUBCOMANDO_PADRAO, *argv]
     return argv
 
 
+def _console_proprio() -> bool:
+    """True se o programa abriu a própria janela de console (duplo clique no .exe): ela some
+    assim que o programa termina. Num terminal já aberto, o console é compartilhado."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+
+    processos = (ctypes.c_uint * 2)()
+    return ctypes.windll.kernel32.GetConsoleProcessList(processos, 2) == 1
+
+
+def _mostrar_ajuda_e_esperar() -> int:
+    construir_parser().print_help()
+    print("\nO Zelador funciona pelo terminal (PowerShell ou Prompt de Comando).")
+    print("Nada foi alterado.")
+    if _console_proprio():
+        try:
+            input("\nPressione Enter para fechar...")
+        except (EOFError, OSError):  # sem teclado ligado ao console: nada a esperar
+            pass
+    return 0
+
+
 def main(argv: Optional[list] = None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
+    if not argv:
+        return _mostrar_ajuda_e_esperar()
     args = construir_parser().parse_args(_com_subcomando(argv))
 
     pasta_log = args.log_dir or logs.pasta_logs_padrao()

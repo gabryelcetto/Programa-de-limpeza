@@ -33,11 +33,12 @@ def _pasta_conhecida(folderid: str, nome_padrao: str) -> Path:
             resultado = ctypes.windll.shell32.SHGetKnownFolderPath(
                 ctypes.byref(guid), 0, None, ctypes.byref(caminho)
             )
-            if resultado == 0:
-                try:
+            try:
+                if resultado == 0 and caminho.value:
                     return Path(caminho.value)
-                finally:
-                    ctypes.windll.ole32.CoTaskMemFree(caminho)
+            finally:
+                # a documentação manda liberar a memória mesmo quando a chamada falha
+                ctypes.windll.ole32.CoTaskMemFree(caminho)
         except Exception:
             pass  # cai no caminho padrão abaixo
 

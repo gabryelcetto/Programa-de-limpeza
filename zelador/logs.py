@@ -15,11 +15,13 @@ logger = logging.getLogger("zelador")
 
 
 def pasta_logs_padrao() -> Path:
-    """Pasta de logs fixa (independe do diretório de onde o script é chamado)."""
+    """Pasta de logs fixa (independe do diretório de onde o programa é chamado): em LOCALAPPDATA
+    no Windows; nos demais, ~/.local/state/zelador (nunca dentro do próprio pacote, que pode não
+    aceitar gravação e, no .exe, é uma pasta temporária apagada ao fechar)."""
     base = os.environ.get("LOCALAPPDATA")
     if base:
         return Path(base) / "Zelador" / "logs"
-    return Path(__file__).resolve().parent / "logs"
+    return Path.home() / ".local" / "state" / "zelador" / "logs"
 
 
 def configurar_logging(pasta_log: Path) -> Optional[Path]:
@@ -57,7 +59,12 @@ def deletar_logs_antigos(pasta_log: Path) -> None:
         return
 
     agora = datetime.now()
-    for pasta in pasta_log.iterdir():
+    try:
+        pastas = list(pasta_log.iterdir())
+    except OSError as erro:  # faxina dos logs nunca derruba o comando que já terminou
+        logger.debug("Não foi possível listar os logs antigos: %s", erro)
+        return
+    for pasta in pastas:
         if not pasta.is_dir():
             continue
         try:
