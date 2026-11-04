@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
 
+import send2trash
+
 
 @dataclass
 class Medicao:
@@ -105,6 +107,33 @@ def deletar_item(item: Path) -> None:
         except PermissionError:
             os.chmod(item, stat.S_IWRITE)
             item.unlink()
+
+
+def _codigo(erro: OSError) -> str:
+    """O código de erro do sistema, para diagnóstico, no fim da mensagem (ou nada)."""
+    codigo = getattr(erro, "winerror", None)
+    if codigo is not None:
+        return f" (código do sistema: {codigo & 0xFFFFFFFF:#010x})"
+    return f" (código do sistema: {erro.errno})" if erro.errno else ""
+
+
+def enviar_para_lixeira(item: Path) -> None:
+    """Manda o item para a Lixeira do sistema, de onde dá para restaurá-lo. Levanta OSError.
+
+    Atalhos (symlink/junction) nunca vão para a Lixeira: só o atalho é removido, como em
+    `deletar_item`, porque o que a Lixeira faria com o conteúdo apontado por ele não é garantido.
+    Atenção: um item na Lixeira ainda ocupa espaço no disco até ela ser esvaziada, e o Windows
+    apaga de vez o que for maior que o limite da Lixeira ou estiver num disco sem Lixeira."""
+    if _eh_link(item.lstat()):
+        deletar_item(item)
+        return
+    try:
+        send2trash.send2trash(str(item))
+    except FileNotFoundError:
+        raise
+    except OSError as erro:  # a mensagem original é um código do sistema ou só o caminho
+        raise OSError(f"o sistema não deixou enviar '{item.name}' para a Lixeira: o arquivo pode "
+                      f"estar em uso por outro programa ou sem permissão{_codigo(erro)}") from erro
 
 
 def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
