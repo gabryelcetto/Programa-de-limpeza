@@ -13,7 +13,8 @@ e o psutil (leitura dos discos).
 
 ## Uso
 
-O programa é organizado em **comandos**: `limpar`, `rodar`, `listar`, `modelos` e `iniciar`.
+O programa é organizado em **comandos**: `limpar`, `rodar`, `listar`, `modelos`, `iniciar` e
+`agendar`.
 
 ```bash
 # Simulação: lista o que seria enviado para a Lixeira, sem mexer em nada (comece sempre por aqui)
@@ -194,16 +195,43 @@ Para apagar de vez use `--permanente` (no `limpar`) ou `acao: apagar` (no YAML).
 - **Logs por dia** (`<logs>/AAAA-MM-DD/log.txt`) com rotação automática: logs com mais de
   30 dias são removidos.
 
-## Agendando no Windows
+## Rodando sozinho: agendamento
 
-Com o pacote instalado (`pip install .`), o comando `zelador` funciona de qualquer
-pasta. Para rodar todo dia às 09:00 pelo Agendador de Tarefas:
+O `agendar` cria uma tarefa no **Agendador de Tarefas do Windows** que executa `zelador rodar`
+com o seu arquivo de regras:
 
-```powershell
-schtasks /Create /SC DAILY /ST 09:00 /TN "Zelador" /TR "zelador limpar" /F
+```bash
+zelador agendar criar                                    # todo dia às 09:00
+zelador agendar criar --hora 18:30
+zelador agendar criar --frequencia semanal --dias seg,qua,sex --hora 08:00
+zelador agendar criar --frequencia aoentrar              # 2 minutos depois de entrar no Windows
+zelador agendar criar --simulacao                        # agenda só a simulação (--dry-run)
+zelador agendar mostrar                                  # o que está agendado
+zelador agendar remover
 ```
 
-Teste antes com `zelador limpar --dry-run` e confira o log gerado.
+Outras opções do `criar`: `--config` (o arquivo de regras; padrão: o arquivo padrão do Zelador),
+`--nome` (o nome da tarefa; padrão: `Zelador`) e `--log-dir`. Criar de novo com o mesmo nome
+**atualiza** a tarefa, sem duplicar.
+
+Um caminho seguro para começar: `zelador iniciar`, depois `zelador listar`, depois
+`zelador rodar --dry-run`, depois `zelador agendar criar --simulacao` (a tarefa só registra no log o
+que faria) e, quando estiver satisfeito, `zelador agendar criar`. Para testar a tarefa na hora, sem
+esperar o horário: `schtasks /Run /TN "Zelador"`. Os logs ficam em `%LOCALAPPDATA%\Zelador\logs`.
+
+O que ele confere e garante:
+
+- **Valida o arquivo de regras antes de agendar.** Uma regra inválida (um erro de digitação, por
+  exemplo) impede o agendamento, em vez de a tarefa falhar sozinha às 9 da manhã.
+- **Recusa agendar uma regra que apaga de vez** (`acao: apagar`) sem você pedir: uma limpeza sem
+  Lixeira rodando sozinha só vale com `--permitir-apagar-de-vez` (ou em `--simulacao`, que não apaga
+  nada). Prefira `acao: lixeira`.
+- **Roda como você, sem administrador**, e só com você logado.
+- **Se o PC estava desligado no horário**, executa assim que possível, e nunca roda duas execuções
+  ao mesmo tempo (uma presa por mais de 1 hora é encerrada).
+- **Sem janela de console** piscando (usa o `pythonw.exe`).
+- A tarefa é definida em XML, e não pela linha de comando do `schtasks`, porque a opção `/TR` aceita
+  no máximo 261 caracteres e um caminho longo em AppData estoura.
 
 ## Desenvolvimento
 
@@ -225,6 +253,8 @@ zelador/
   limpeza.py         comando `limpar` (uma regra do motor: tirar o que é antigo, via Lixeira)
   comando_regras.py  comandos `rodar` e `listar`
   comando_modelos.py comandos `modelos` e `iniciar`
+  comando_agenda.py  comando `agendar` (criar, remover e mostrar a tarefa no Windows)
+  agenda.py          monta a tarefa do Agendador de Tarefas (XML), sem executar nada
   modelos.py         os modelos prontos de regras e o gerador do arquivo
   discos.py          leitura dos discos (psutil)
   painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
