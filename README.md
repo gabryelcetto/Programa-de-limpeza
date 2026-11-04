@@ -1,103 +1,112 @@
-# Zelador
+# Zelador Files
 
 ![Pipeline](../../actions/workflows/pipeline.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-Ferramenta de manutenção de arquivos para Windows, em Python. O comando `limpar` remove da pasta
-de **Downloads** os arquivos e pastas sem atividade há mais de N dias, e o comando `rodar`
-executa **regras** (condições + ações, como mover PDFs ou apagar instaladores) descritas em um
-arquivo YAML, sempre com simulação antes. Ele nasceu de uma necessidade real do trabalho, onde a
-pasta de Downloads enchia sem ninguém perceber. As dependências são o PyYAML (arquivo de regras)
-e o psutil (leitura dos discos).
+A rule-based file organizer and cleaner for Windows, written in Python. *Zelador* is Portuguese for
+"caretaker" or "janitor". You describe what to look at, which items to pick and what to do with
+them in a YAML file (move PDFs out of Downloads, send old installers to the Recycle Bin...), and
+Zelador applies those **rules**, always with a dry run first. Everything it removes goes to the
+Recycle Bin by default, everything it moves can be undone, and a set of protected folders keeps a
+bad rule from touching the system. It was born from a real need: Downloads folders fill up and
+nobody notices. Dependencies: PyYAML (rules file), psutil (disk reading) and send2trash
+(Recycle Bin).
 
-## Uso
+> **Language note:** the command names (`limpar`, `rodar`, `listar`...), the YAML keys
+> (`regras`, `condicoes`, `idade_dias`...) and the program messages are in Brazilian Portuguese.
+> This README documents them exactly as they are, translating only the explanations.
 
-O programa é organizado em **comandos**: `limpar`, `rodar`, `listar`, `modelos`, `iniciar` e
-`agendar`.
+## Usage
+
+The program is organized in **commands**: `limpar` (clean), `rodar` (run rules), `listar` (list
+rules), `modelos` (templates), `iniciar` (start from templates), `agendar` (schedule),
+`historico` (history) and `desfazer` (undo).
 
 ```bash
-# Simulação: lista o que seria enviado para a Lixeira, sem mexer em nada (comece sempre por aqui)
+# Dry run: lists what would be sent to the Recycle Bin, changing nothing (always start here)
 python -m zelador limpar --dry-run
 
-# Envia para a Lixeira o que está há mais de 7 dias (padrão) sem atividade
+# Sends to the Recycle Bin whatever has had no activity for more than 7 days (the default)
 python -m zelador limpar
 
-# Muda o limite e a pasta
+# Changes the limit and the folder
 python -m zelador limpar --dias 14 --pasta "D:\Temporarios"
 
-# Apaga de vez, sem passar pela Lixeira (não tem volta)
+# Deletes for good, skipping the Recycle Bin (there is no way back)
 python -m zelador limpar --permanente
 
-# Ajuda geral e de um comando
+# General help, and help for one command
 python -m zelador --help
 python -m zelador limpar --help
 ```
 
-Chamadas só com opções (`python -m zelador --dry-run`) continuam funcionando e equivalem a
-`limpar`, para não quebrar tarefas agendadas criadas antes dos comandos. Elas herdam o padrão
-atual: o que sai de Downloads vai para a **Lixeira**, e não é mais apagado de vez. Chamar o
-programa **sem nada** (por exemplo, com duplo clique no `.exe`) só mostra a ajuda: nunca limpa.
+Calls with only options (`python -m zelador --dry-run`) still work and are equivalent to `limpar`,
+so scheduled tasks created before the commands existed don't break. They inherit the current
+default: what leaves Downloads goes to the **Recycle Bin** and is no longer deleted for good.
+Calling the program with **nothing at all** (for example, by double-clicking the `.exe`) only
+shows the help: it never cleans anything.
 
-**Opção comum a todos os comandos**
+**Option shared by all commands**
 
-| Opção | Descrição | Padrão |
+| Option | Description | Default |
 |---|---|---|
-| `--log-dir CAMINHO` | Pasta onde os logs são gravados | `%LOCALAPPDATA%\Zelador\logs` |
+| `--log-dir PATH` | Folder where logs are written | `%LOCALAPPDATA%\Zelador\logs` |
 
-**Comando `limpar`** (o `rodar` também aceita `--dry-run`; comandos que só leem não têm essa opção)
+**`limpar` command** (`rodar` and `desfazer` also accept `--dry-run`; read-only commands don't)
 
-| Opção | Descrição | Padrão |
+| Option | Description | Default |
 |---|---|---|
-| `--dry-run` | Apenas mostra o que seria enviado para a Lixeira, sem alterar nada | desligado |
-| `--dias N` | Dias sem atividade para considerar o item antigo (mínimo 1) | `7` |
-| `--pasta CAMINHO` | Pasta a limpar | Downloads do usuário |
-| `--permanente` | Apaga de vez, sem passar pela Lixeira (não tem volta) | desligado |
+| `--dry-run` | Only shows what would be sent to the Recycle Bin, changing nothing | off |
+| `--dias N` | Days without activity for an item to count as old (minimum 1) | `7` |
+| `--pasta PATH` | Folder to clean | the user's Downloads |
+| `--permanente` | Deletes for good, skipping the Recycle Bin (no way back) | off |
 
-**Código de saída:** `0` quando tudo ocorreu bem, `1` se houve algum erro ou a pasta não existe,
-e `2` para argumentos inválidos ou uma pasta protegida. Isso permite usar o resultado em
-agendadores e pipelines.
+**Exit codes:** `0` when everything went well, `1` if there was an error or the folder doesn't
+exist, and `2` for invalid arguments or a protected folder. This makes the result usable in
+schedulers and pipelines.
 
-Para instalar como comando: `pip install .` e depois `zelador limpar --dry-run`.
+To install it as a command: `pip install .`, then `zelador limpar --dry-run`.
 
-## Começando com modelos prontos
+## Getting started with ready-made templates
 
-Você não precisa escrever o YAML do zero. O `iniciar` cria o arquivo de regras a partir de modelos
-prontos, com comentários explicando cada regra, para você editar depois:
+You don't have to write the YAML from scratch. `iniciar` creates the rules file from ready-made
+templates, with comments explaining each rule, for you to edit afterwards:
 
 ```bash
-zelador modelos                                  # lista os modelos disponíveis
-zelador iniciar                                  # cria o arquivo com os modelos recomendados
+zelador modelos                                  # lists the available templates
+zelador iniciar                                  # creates the file with the recommended templates
 zelador iniciar --modelo organizar-pdfs --modelo organizar-imagens
-zelador iniciar --imprimir                       # só mostra na tela, sem gravar nada
+zelador iniciar --imprimir                       # only prints it, writes nothing
 ```
 
-| Modelo | O que faz |
+| Template | What it does |
 |---|---|
-| `organizar-pdfs` (recomendado) | move os PDFs de Downloads para `Documentos/PDFs` |
-| `organizar-imagens` | move fotos e imagens para `Imagens/Downloads` |
-| `organizar-documentos` | move Word, Excel e PowerPoint para `Documentos/Baixados` |
-| `limpar-instaladores` (recomendado) | envia para a Lixeira `.exe`/`.msi` grandes com mais de 3 dias |
-| `limpar-downloads-parados` (recomendado) | envia para a Lixeira o que está parado há mais de 30 dias |
+| `organizar-pdfs` (recommended) | moves PDFs from Downloads to `Documents/PDFs` |
+| `organizar-imagens` | moves photos and images to `Pictures/Downloads` |
+| `organizar-documentos` | moves Word, Excel and PowerPoint files to `Documents/Baixados` |
+| `limpar-instaladores` (recommended) | sends large `.exe`/`.msi` files older than 3 days to the Recycle Bin |
+| `limpar-downloads-parados` (recommended) | sends whatever has sat there for over 30 days to the Recycle Bin |
 
-O arquivo é gravado em `%APPDATA%\Zelador\regras.yml`, que é onde o `rodar` e o `listar` procuram
-sem precisar de `--config`. Depois: `zelador listar`, `zelador rodar --dry-run` e, quando estiver
-satisfeito, `zelador rodar`.
+The file is written to `%APPDATA%\Zelador\regras.yml`, which is where `rodar` and `listar` look
+when `--config` isn't given. Then: `zelador listar`, `zelador rodar --dry-run` and, once you're
+happy, `zelador rodar`.
 
-Cuidados embutidos:
+Built-in safeguards:
 
-- **Nunca sobrescreve** um arquivo existente. Com `--forcar`, guarda antes uma cópia datada
-  (`regras.yml.20261104-153012.bak`, nunca substituindo uma cópia anterior).
-- **Grava de forma atômica**: se algo falhar no meio, o arquivo original continua intacto.
-- **Nenhum modelo apaga de vez**: só movem ou mandam para a Lixeira, que têm volta. Isso é garantido
-  por teste.
-- **A ordem é decidida pelo programa**: quem organiza roda antes de quem limpa, para a limpeza
-  genérica nunca pegar o que acabou de ser organizado (um PDF de 40 dias é movido, não descartado).
-- Os destinos usam as pastas **reais** do Windows (`{documentos}`, `{imagens}`), mesmo no OneDrive.
+- **Never overwrites** an existing file. With `--forcar`, it first keeps a dated copy
+  (`regras.yml.20261104-153012.bak`, never replacing an earlier copy).
+- **Writes atomically**: if anything fails halfway, the original file stays intact.
+- **No template deletes for good**: they only move or send to the Recycle Bin, both of which can
+  be reversed. This is guaranteed by a test.
+- **The order is decided by the program**: rules that organize run before rules that clean, so a
+  generic cleanup never catches what was just organized (a 40-day-old PDF is moved, not
+  discarded).
+- Destinations use the **real** Windows folders (`{documentos}`, `{imagens}`), even on OneDrive.
 
-## Regras em arquivo YAML
+## Rules in a YAML file
 
-Cada regra diz *onde* olhar, *quais itens* escolher e *o que fazer*:
+Each rule says *where* to look, *which items* to pick and *what to do*:
 
 ```yaml
 versao: 1
@@ -118,171 +127,174 @@ regras:
 ```
 
 ```bash
-zelador listar --config regras.yml            # mostra o que cada regra faz e aponta problemas
-zelador rodar --config regras.yml --dry-run   # simula, sem alterar nada
-zelador rodar --config regras.yml             # executa as regras, na ordem do arquivo
+zelador listar --config regras.yml            # shows what each rule does and flags problems
+zelador rodar --config regras.yml --dry-run   # simulates, changing nothing
+zelador rodar --config regras.yml             # runs the rules, in file order
 ```
 
-Sem `--config`, o Zelador procura `regras.yml` na pasta `Zelador` dentro de `%APPDATA%`. Há um
-modelo comentado em [`exemplos/regras.yml`](exemplos/regras.yml).
+Without `--config`, Zelador looks for `regras.yml` in the `Zelador` folder inside `%APPDATA%`.
+There is a commented template in [`exemplos/regras.yml`](exemplos/regras.yml).
 
-**Condições** (todas as de uma regra precisam ser verdadeiras):
+**Conditions** (all of a rule's conditions must hold):
 
-| Condição | Valor | Exemplo |
+| Condition | Value | Example |
 |---|---|---|
-| `idade_dias` | inteiro, mínimo 1: sem atividade há mais de N dias | `7` |
-| `extensoes` | lista de extensões, sem diferenciar maiúsculas | `[pdf, docx]` |
-| `tamanho_min`, `tamanho_max` | bytes, ou texto com unidade (KB, MB, GB, TB; base 1024) | `50MB` |
-| `nome` | expressão regular sobre o nome, sem diferenciar maiúsculas | `"^relat"` |
+| `idade_dias` | integer, minimum 1: no activity for more than N days | `7` |
+| `extensoes` | list of extensions, case-insensitive | `[pdf, docx]` |
+| `tamanho_min`, `tamanho_max` | bytes, or text with a unit (KB, MB, GB, TB; base 1024) | `50MB` |
+| `nome` | regular expression on the name, case-insensitive | `"^relat"` |
 
-**Ações:** `lixeira` (recomendada: dá para restaurar), `apagar` (de vez, sem volta), ou
-`mover: <pasta de destino>`. Mover nunca sobrescreve: se o nome já existe
-no destino, o arquivo novo vira `nome (1).ext`.
+**Actions:** `lixeira` (recommended: can be restored), `apagar` (for good, no way back), or
+`mover: <destination folder>`. Moving never overwrites: if the name already exists at the
+destination, the new file becomes `name (1).ext`.
 
-**Caminhos** devem ser absolutos. Use `{downloads}`, `{documentos}` ou `{imagens}` (as pastas
-**reais** do usuário: elas podem estar no OneDrive e ter outro nome, como "Documentos", e por isso
-`~/Documents` pode apontar para outra pasta), `~` (pasta pessoal) ou `${VARIAVEL}` (variável de
-ambiente).
+**Paths** must be absolute. Use `{downloads}`, `{documentos}` or `{imagens}` (the user's **real**
+folders: they may live on OneDrive and have a different name, so `~/Documents` can point to the
+wrong folder), `~` (home folder) or `${VARIABLE}` (environment variable).
 
-**Códigos de saída de `rodar` e `listar`:** `0` tudo certo, `1` alguma regra foi ignorada por ser
-inválida ou houve erro ao executar, `2` o arquivo não existe ou o YAML está inválido. O `listar`
-serve também para validar o arquivo antes de agendar.
+**Exit codes of `rodar` and `listar`:** `0` all good, `1` some rule was ignored for being invalid
+or there was an error while running, `2` the file doesn't exist or the YAML is invalid. `listar`
+also works as a way to validate the file before scheduling.
 
-Cuidado com uma pegadinha do YAML: `no`, `yes`, `on` e `off` sem aspas viram falso/verdadeiro. O
-Zelador avisa quando isso acontece numa lista de extensões; para a extensão `no`, escreva `["no"]`.
+A YAML gotcha to watch for: unquoted `no`, `yes`, `on` and `off` become booleans. Zelador warns
+you when that happens in an extensions list; for the extension `no`, write `["no"]`.
 
-## Sobre a Lixeira
+## About the Recycle Bin
 
-Por padrão, o que o Zelador tira de uma pasta vai para a **Lixeira do Windows**, e dá para
-restaurar pelo Explorer. Três coisas que vale saber:
+By default, whatever Zelador takes out of a folder goes to the **Windows Recycle Bin**, and can be
+restored from Explorer. Three things worth knowing:
 
-- **A Lixeira não libera espaço.** Os itens continuam ocupando disco até você esvaziá-la. Num teste
-  real, enviar um arquivo de 300 MB deixou o espaço livre do disco igual. Por isso, ao terminar, o
-  `limpar` avisa: "O espaço em disco só volta quando você esvaziar a Lixeira".
-- **O Windows apaga de vez** o que for maior que o limite da Lixeira, ou estiver num disco que não
-  tem Lixeira (pendrive, unidade de rede). Isso não é controlado pelo Zelador.
-- **Atalhos (junction/symlink) nunca vão para a Lixeira:** só o atalho é removido, e o conteúdo
-  para onde ele aponta fica intacto.
+- **The Recycle Bin doesn't free space.** Items keep taking up disk space until you empty it. In a
+  real test, sending a 300 MB file left the free disk space unchanged. That's why `limpar` ends
+  with a notice (in Portuguese): "disk space only comes back when you empty the Recycle Bin".
+- **Windows deletes for good** whatever is larger than the Recycle Bin limit, or sits on a drive
+  with no Recycle Bin (USB stick, network drive). Zelador doesn't control that.
+- **Shortcuts (junctions/symlinks) never go to the Recycle Bin:** only the shortcut itself is
+  removed, and whatever it points to stays intact.
 
-Para apagar de vez use `--permanente` (no `limpar`) ou `acao: apagar` (no YAML).
+To delete for good, use `--permanente` (in `limpar`) or `acao: apagar` (in the YAML).
 
-## Histórico e desfazer
+## History and undo
 
-Toda vez que o `rodar` ou o `limpar` trata algum item (de verdade, não na simulação), o Zelador
-anota o que fez em `%LOCALAPPDATA%\Zelador\historico.jsonl`. Dá para consultar e, no caso do que
-foi **movido**, desfazer:
+Every time `rodar` or `limpar` handles an item (for real, not in a dry run), Zelador writes down
+what it did in `%LOCALAPPDATA%\Zelador\historico.jsonl`. You can inspect it and, for what was
+**moved**, undo it:
 
 ```bash
-zelador historico                    # as últimas execuções, da mais nova para a mais antiga
-zelador historico --lote ID          # item por item do que uma execução fez
-zelador desfazer --dry-run           # mostra o que voltaria, sem mexer em nada
-zelador desfazer                     # devolve ao lugar de origem o que a última execução moveu
-zelador desfazer --lote ID           # ... ou o de uma execução específica
+zelador historico                    # the latest runs, newest first
+zelador historico --lote ID          # item by item, what one run did
+zelador desfazer --dry-run           # shows what would go back, changing nothing
+zelador desfazer                     # puts back what the last run moved
+zelador desfazer --lote ID           # ... or what a specific run moved
 ```
 
-O que dá (e o que não dá) para desfazer:
+What can (and cannot) be undone:
 
-| Ação | Desfazer |
+| Action | Undo |
 |------|----------|
-| `mover` | Sim: volta ao lugar e **ao nome** de antes (um `a (1).pdf` volta a ser `a.pdf`). |
-| Lixeira | Não pelo Zelador: restaure pelo Explorer. |
-| `apagar` | Não: foi apagado de vez. |
+| `mover` (move) | Yes: it goes back to its place **and name** (an `a (1).pdf` becomes `a.pdf` again). |
+| Recycle Bin | Not through Zelador: restore it from Explorer. |
+| `apagar` (delete) | No: it was deleted for good. |
 
-Cuidados embutidos: o desfazer **nunca sobrescreve** (se o lugar de origem foi ocupado nesse meio
-tempo, o arquivo volta como `nome (1)`), segue da última ação para a primeira, e um problema em um
-item não impede os demais. Como o histórico é um arquivo de texto que qualquer um pode editar,
-nada nele é obedecido às cegas: antes de mover, o Zelador confere que o item ainda está onde o
-histórico diz, que continua sendo do mesmo tipo (arquivo ou pasta) e que nem ele nem o lugar de
-volta ficam numa pasta protegida do sistema.
+Built-in safeguards: undo **never overwrites** (if the original place was taken in the meantime,
+the file comes back as `name (1)`), goes from the last action to the first, and a problem with one
+item doesn't stop the others. Since the history is a text file anyone can edit, nothing in it is
+obeyed blindly: before moving, Zelador checks that the item is still where the history says, that
+it is still the same kind (file or folder), and that neither it nor the place it returns to is in
+a protected system folder.
 
-O arquivo só recebe linhas novas no fim (se o computador desligar no meio, no máximo a última
-linha fica incompleta e é ignorada) e descarta sozinho o que tem mais de 180 dias quando passa de
-2 MB. Se o disco não deixar gravar, a limpeza continua e o Zelador avisa que aquela execução não
-poderá ser desfeita. Use `--historico ARQUIVO` para usar outro arquivo.
+The file is append-only (if the computer shuts down midway, at most the last line is left
+incomplete and is ignored) and drops entries older than 180 days by itself once it passes 2 MB.
+If the disk won't allow writing, the cleanup carries on and Zelador warns that this run can't be
+undone. Use `--historico FILE` to use another file.
 
-## Decisões técnicas
+## Design decisions
 
-- **Reversível por padrão:** o que sai vai para a Lixeira; apagar de vez é uma escolha explícita
-  (`--permanente` ou `acao: apagar`). Os testes nunca usam a Lixeira de verdade: uma Lixeira falsa é
-  aplicada automaticamente a todos eles.
-- **Segurança primeiro:** o modo `--dry-run` mostra exatamente o que seria feito, e
-  `--dias 0` ou negativo é rejeitado (apagaria tudo).
-- **Pastas protegidas:** nenhuma regra pode atuar na raiz de um disco, na pasta pessoal inteira,
-  na pasta que contém os usuários nem em pastas do sistema (Windows, Arquivos de Programas). A
-  checagem resolve atalhos, então um atalho para `C:\Windows` também é recusado. Subpastas da
-  pasta pessoal, como Downloads, são permitidas.
-- **O arquivo de regras é entrada não confiável:** é lido como YAML "seguro" (nunca executa
-  código), chaves repetidas e campos desconhecidos são erros (um erro de digitação em
-  `idade_dias` deixaria a regra mais ampla do que o autor quis), e caminhos relativos são
-  recusados. Uma regra inválida é ignorada com um aviso e as demais continuam.
-- **Não segue atalhos:** symlinks e junctions do Windows são tratados como o próprio atalho.
-  Apagar um atalho nunca apaga o conteúdo para onde ele aponta.
-- **Idade real de pastas:** o `mtime` de uma pasta não muda quando um arquivo dentro de uma
-  subpasta é alterado. Por isso a idade de uma pasta é a atividade mais recente de *tudo* que
-  há dentro dela.
-- **Data de criação + modificação:** arquivos baixados ou extraídos costumam manter a data de
-  modificação original. O programa usa a maior entre criação e modificação, que reflete quando
-  o arquivo chegou na máquina.
-- **Pasta de Downloads correta:** é resolvida pela API de Known Folders do Windows, então
-  funciona mesmo quando a pasta foi redirecionada (OneDrive, política de grupo).
-- **Arquivos somente leitura** são tratados normalmente (inclusive pela Lixeira).
-- **Logs por dia** (`<logs>/AAAA-MM-DD/log.txt`) com rotação automática: logs com mais de
-  30 dias são removidos.
+- **Reversible by default:** what leaves goes to the Recycle Bin; deleting for good is an explicit
+  choice (`--permanente` or `acao: apagar`). The tests never touch the real Recycle Bin: a fake one
+  is applied automatically to all of them.
+- **Safety first:** `--dry-run` shows exactly what would be done, and `--dias 0` or a negative
+  value is rejected (it would delete everything). Running the program with no arguments never
+  cleans anything.
+- **Protected folders:** no rule can act on a drive root, on the whole home folder, on the folder
+  that contains the users, or on system folders (Windows, Program Files). The check resolves
+  shortcuts, so a shortcut to `C:\Windows` is refused too. Subfolders of the home folder, such as
+  Downloads, are allowed. A rule that moves items into its own folder is refused as well.
+- **The rules file is untrusted input:** it is read as "safe" YAML (it never runs code), repeated
+  keys and unknown fields are errors (a typo in `idade_dias` would leave the rule broader than the
+  author meant), and relative paths are refused. An invalid rule is skipped with a warning and the
+  others carry on.
+- **Doesn't follow shortcuts:** symlinks and Windows junctions are treated as the shortcut itself.
+  Deleting a shortcut never deletes what it points to.
+- **Moving across drives is safe:** on the same drive a move is just a rename. Across drives it
+  copies and then deletes the source, and if the source can only be partly deleted (a file in use),
+  the complete copy is kept and nothing is lost.
+- **Real age of folders:** a folder's `mtime` doesn't change when a file inside a subfolder is
+  modified. So a folder's age is the most recent activity of *everything* inside it.
+- **Creation + modification date:** downloaded or extracted files often keep their original
+  modification date. The program uses the later of creation and modification, which reflects when
+  the file arrived on the machine.
+- **Correct Downloads folder:** it is resolved through the Windows Known Folders API, so it works
+  even when the folder was redirected (OneDrive, group policy).
+- **Read-only files** are handled normally (including by the Recycle Bin).
+- **Daily logs** (`<logs>/YYYY-MM-DD/log.txt`) with automatic rotation: logs older than 30 days
+  are removed.
 
-## Rodando sozinho: agendamento
+## Running on its own: scheduling
 
-O `agendar` cria uma tarefa no **Agendador de Tarefas do Windows** que executa `zelador rodar`
-com o seu arquivo de regras:
+`agendar` creates a task in the **Windows Task Scheduler** that runs `zelador rodar` with your
+rules file:
 
 ```bash
-zelador agendar criar                                    # todo dia às 09:00
+zelador agendar criar                                    # every day at 09:00
 zelador agendar criar --hora 18:30
 zelador agendar criar --frequencia semanal --dias seg,qua,sex --hora 08:00
-zelador agendar criar --frequencia aoentrar              # 2 minutos depois de entrar no Windows
-zelador agendar criar --simulacao                        # agenda só a simulação (--dry-run)
-zelador agendar mostrar                                  # o que está agendado
+zelador agendar criar --frequencia aoentrar              # 2 minutes after logging in to Windows
+zelador agendar criar --simulacao                        # schedules only the dry run (--dry-run)
+zelador agendar mostrar                                  # what is scheduled
 zelador agendar remover
 ```
 
-Outras opções do `criar`: `--config` (o arquivo de regras; padrão: o arquivo padrão do Zelador),
-`--nome` (o nome da tarefa; padrão: `Zelador`) e `--log-dir`. Criar de novo com o mesmo nome
-**atualiza** a tarefa, sem duplicar.
+Other `criar` options: `--config` (the rules file; default: Zelador's default file), `--nome`
+(the task name; default: `Zelador`) and `--log-dir`. Creating again with the same name
+**updates** the task without duplicating it.
 
-Um caminho seguro para começar: `zelador iniciar`, depois `zelador listar`, depois
-`zelador rodar --dry-run`, depois `zelador agendar criar --simulacao` (a tarefa só registra no log o
-que faria) e, quando estiver satisfeito, `zelador agendar criar`. Para testar a tarefa na hora, sem
-esperar o horário: `schtasks /Run /TN "Zelador"`. Os logs ficam em `%LOCALAPPDATA%\Zelador\logs`.
+A safe way to start: `zelador iniciar`, then `zelador listar`, then `zelador rodar --dry-run`,
+then `zelador agendar criar --simulacao` (the task only logs what it would do) and, once you're
+happy, `zelador agendar criar`. To test the task right away, without waiting for the time:
+`schtasks /Run /TN "Zelador"`. Logs are in `%LOCALAPPDATA%\Zelador\logs`.
 
-O que ele confere e garante:
+What it checks and guarantees:
 
-- **Valida o arquivo de regras antes de agendar.** Uma regra inválida (um erro de digitação, por
-  exemplo) impede o agendamento, em vez de a tarefa falhar sozinha às 9 da manhã.
-- **Recusa agendar uma regra que apaga de vez** (`acao: apagar`) sem você pedir: uma limpeza sem
-  Lixeira rodando sozinha só vale com `--permitir-apagar-de-vez` (ou em `--simulacao`, que não apaga
-  nada). Prefira `acao: lixeira`.
-- **Roda como você, sem administrador**, e só com você logado.
-- **Se o PC estava desligado no horário**, executa assim que possível, e nunca roda duas execuções
-  ao mesmo tempo (uma presa por mais de 1 hora é encerrada).
-- **Sem janela de console** piscando (usa o `pythonw.exe`).
-- A tarefa é definida em XML, e não pela linha de comando do `schtasks`, porque a opção `/TR` aceita
-  no máximo 261 caracteres e um caminho longo em AppData estoura.
+- **Validates the rules file before scheduling.** An invalid rule (a typo, for example) blocks the
+  scheduling, instead of the task failing by itself at 9 a.m.
+- **Refuses to schedule a rule that deletes for good** (`acao: apagar`) unless you ask: a cleanup
+  with no Recycle Bin running on its own only works with `--permitir-apagar-de-vez` (or with
+  `--simulacao`, which deletes nothing). Prefer `acao: lixeira`.
+- **Runs as you, without administrator rights**, and only while you are logged in.
+- **If the PC was off at the scheduled time**, it runs as soon as possible, and it never runs two
+  executions at once (one stuck for over 1 hour is ended).
+- **No flashing console window** when run from Python (it uses `pythonw.exe`). The packaged `.exe`
+  is a console program, so a console window blinks briefly when the task runs.
+- The task is defined in XML rather than through the `schtasks` command line, because the `/TR`
+  option accepts at most 261 characters and a long path in AppData overflows it.
 
-## Gerando o .exe
+## Building the .exe
 
-Um único arquivo, `zelador.exe`, que funciona sem Python instalado (use-o no lugar de `zelador`
-em todos os comandos acima, inclusive no `agendar`, que passa a agendar o próprio `.exe`):
+A single file, `zelador.exe`, that works without Python installed (use it in place of `zelador` in
+all the commands above, including `agendar`, which then schedules the `.exe` itself):
 
 ```powershell
 pip install -e . pyinstaller
-powershell -File scripts\gerar-exe.ps1     # gera dist\zelador.exe e mostra o SHA256
+powershell -File scripts\gerar-exe.ps1     # builds dist\zelador.exe and prints the SHA256
 dist\zelador.exe --version
 ```
 
-O ícone (`assets/zelador.ico`) é um desenho próprio, gerado por `scripts/gerar-icone.py`
-(precisa do `pillow`). O `.exe` não é assinado digitalmente, então o Windows SmartScreen pode
-mostrar um aviso na primeira execução ("Mais informações" > "Executar assim mesmo").
+The icon (`assets/zelador.ico`) is an original drawing, generated by `scripts/gerar-icone.py`
+(requires `pillow`). The `.exe` is not digitally signed, so Windows SmartScreen may show a warning
+on first run ("More info" > "Run anyway").
 
-## Desenvolvimento
+## Development
 
 ```bash
 pip install -e ".[dev]"
@@ -290,39 +302,41 @@ ruff check .
 pytest
 ```
 
-A pipeline em [`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml) roda, a cada
-push e pull request: verificação de sintaxe, análise estática (`ruff`), testes (`pytest`) e
-auditoria de vulnerabilidades das dependências (`pip-audit`).
+The pipeline in [`.github/workflows/pipeline.yml`](.github/workflows/pipeline.yml) runs on every
+push and pull request: syntax check, static analysis (`ruff`), tests (`pytest`) and a dependency
+vulnerability audit (`pip-audit`).
 
-## Estrutura
+## Project structure
 
 ```
 zelador/
-  cli.py             comandos e opções comuns (ponto de entrada)
-  limpeza.py         comando `limpar` (uma regra do motor: tirar o que é antigo, via Lixeira)
-  comando_regras.py  comandos `rodar` e `listar`
-  comando_modelos.py comandos `modelos` e `iniciar`
-  comando_historico.py  comandos `historico` e `desfazer`
-  historico.py       o arquivo do histórico (só se acrescenta ao fim) e a poda
-  desfazer.py        devolve ao lugar o que foi movido, com as conferências de segurança
-  comando_agenda.py  comando `agendar` (criar, remover e mostrar a tarefa no Windows)
-  agenda.py          monta a tarefa do Agendador de Tarefas (XML), sem executar nada
-  modelos.py         os modelos prontos de regras e o gerador do arquivo
-  discos.py          leitura dos discos (psutil)
-  painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
-  opcoes.py          opções de linha de comando compartilhadas (`--dry-run`)
-  configuracao.py    leitura e validação do arquivo YAML de regras
-  regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações
-  seguranca.py       pastas em que nenhuma regra pode atuar
-  arquivos.py        operações sobre arquivos: medir, apagar, enviar à Lixeira, mover
-  caminhos.py        Downloads real do usuário e local dos arquivos de regras e de histórico
-  logs.py            configuração e rotação dos logs
-  __main__.py        permite `python -m zelador`
-exemplos/regras.yml  modelo comentado de arquivo de regras
-tests/               testes de cada módulo (pytest)
+  cli.py                entry point: commands and shared options
+  limpeza.py            `limpar` command (one engine rule: remove what is old, via the Recycle Bin)
+  comando_regras.py     `rodar` and `listar` commands
+  comando_modelos.py    `modelos` and `iniciar` commands
+  comando_historico.py  `historico` and `desfazer` commands
+  historico.py          the history file (append-only) and its pruning
+  desfazer.py           puts back what was moved, with the safety checks
+  comando_agenda.py     `agendar` command (create, remove and show the Windows task)
+  agenda.py             builds the Task Scheduler definition (XML), runs nothing
+  modelos.py            the ready-made rule templates and the file generator
+  discos.py             disk reading (psutil)
+  painel/recomendacoes.py  explainable recommendations: full disk, idle Downloads, loose PDFs
+  opcoes.py             shared command-line options (`--dry-run`, `--historico`)
+  configuracao.py       reading and validation of the YAML rules file
+  regras.py             rule engine: conditions (age, extension, size, name) and actions
+  seguranca.py          folders no rule may act on
+  arquivos.py           file operations: measure, delete, send to the Recycle Bin, move, restore
+  caminhos.py           the user's real Downloads and where the rules and history files live
+  logs.py               log setup and rotation
+  __main__.py           allows `python -m zelador`
+scripts/                gerar-exe.ps1 (PyInstaller build), gerar-icone.py, zelador_exe.py
+assets/                 the program icon
+exemplos/regras.yml     commented template of a rules file
+tests/                  tests for every module (pytest)
 .github/workflows/pipeline.yml
 ```
 
-## Licença
+## License
 
 [MIT](LICENSE)
