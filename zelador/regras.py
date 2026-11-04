@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Callable, ClassVar, Optional, Protocol
 
 from . import arquivos as _arquivos
 from .arquivos import deletar_item, formatar_tamanho, medir_item, mover_item
@@ -137,8 +137,9 @@ class Acao(Protocol):
     def resumo(self) -> str:
         """Texto para listar a regra: 'apagar', 'mover para X'..."""
 
-    def aplicar(self, item: Item) -> None:
-        """Executa a ação. Levanta OSError em caso de falha."""
+    def aplicar(self, item: Item) -> Optional[Path]:
+        """Executa a ação. Devolve o novo lugar do item, se ele foi para algum (mover), senão
+        None. Levanta OSError em caso de falha."""
 
     def ocupa(self, caminho: Path) -> bool:
         """True se o caminho é (ou contém) o destino da ação: o item deve ser deixado em paz."""
@@ -146,14 +147,17 @@ class Acao(Protocol):
 
 @dataclass(frozen=True)
 class Apagar:
+    tipo: ClassVar[str] = "apagar"  # como o histórico identifica a ação
+
     def descricao(self) -> str:
         return "deletado(a)"
 
     def resumo(self) -> str:
         return "apagar"
 
-    def aplicar(self, item: Item) -> None:
+    def aplicar(self, item: Item) -> Optional[Path]:
         deletar_item(item.caminho)
+        return None
 
     def ocupa(self, caminho: Path) -> bool:
         return False
@@ -163,15 +167,18 @@ class Apagar:
 class EnviarParaLixeira:
     """Como `Apagar`, mas o item vai para a Lixeira do sistema e dá para restaurá-lo."""
 
+    tipo: ClassVar[str] = "lixeira"
+
     def descricao(self) -> str:
         return "enviado(a) para a Lixeira"
 
     def resumo(self) -> str:
         return "enviar para a Lixeira"
 
-    def aplicar(self, item: Item) -> None:
+    def aplicar(self, item: Item) -> Optional[Path]:
         # pelo módulo (e não importando o nome): quem testa troca num ponto só
         _arquivos.enviar_para_lixeira(item.caminho)
+        return None
 
     def ocupa(self, caminho: Path) -> bool:
         return False
@@ -186,6 +193,8 @@ def _normalizar(caminho: Path) -> str:
 class Mover:
     destino: Path
 
+    tipo: ClassVar[str] = "mover"
+
     def __post_init__(self):
         pasta = pasta_do_sistema_que_contem(self.destino)
         if pasta:
@@ -198,8 +207,8 @@ class Mover:
     def resumo(self) -> str:
         return f"mover para {self.destino}"
 
-    def aplicar(self, item: Item) -> None:
-        mover_item(item.caminho, self.destino)
+    def aplicar(self, item: Item) -> Optional[Path]:
+        return mover_item(item.caminho, self.destino)  # o lugar final: pode ter virado "nome (1)"
 
     def ocupa(self, caminho: Path) -> bool:
         alvo, destino = _normalizar(caminho), _normalizar(self.destino)
@@ -235,12 +244,29 @@ class Resumo:
     bytes: int = 0
 
 
+@dataclass(frozen=True)
+class Registro:
+    """O que foi feito com um item: o que o histórico guarda (e o desfazer usa)."""
+
+    regra: str
+    tipo: str  # "apagar", "lixeira", "mover" (ou "outra", para uma ação personalizada)
+    origem: Path  # sempre absoluta
+    destino: Optional[Path]  # onde ficou, se a ação move; já com o "(1)" se houve colisão
+    tamanho: int
+    eh_pasta: bool
+
+
 def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime] = None,
-                   detalhar: bool = True) -> Resumo:
+                   detalhar: bool = True,
+                   registrar: Optional[Callable[[Registro], None]] = None) -> Resumo:
     """Aplica a regra aos itens da pasta. Um erro em um item não interrompe os demais.
 
     `detalhar=False` não registra uma linha de log por item (para simulações só de estimativa,
-    repetidas, como as do painel); erros continuam sendo registrados."""
+    repetidas, como as do painel); erros continuam sendo registrados.
+
+    `registrar`, se informado, é chamado a cada item aplicado DE VERDADE (nunca na simulação),
+    depois de a ação dar certo. Ele não deve levantar por problemas de disco: o que ele levantar
+    não é tratado como erro do item e interrompe a regra."""
     resumo = Resumo()
     agora = agora or datetime.now()
     prefixo = "[SIMULAÇÃO] " if dry_run else ""
@@ -261,8 +287,7 @@ def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime
                 logger.debug("Mantido (não casa com a regra): %s", caminho.name)
                 continue
 
-            if not dry_run:
-                regra.acao.aplicar(item)
+            novo_lugar = None if dry_run else regra.acao.aplicar(item)
         except OSError as erro:
             resumo.erros += 1
             logger.error("Erro em %s: %s", caminho.name, erro)
@@ -270,6 +295,11 @@ def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime
 
         resumo.aplicados += 1
         resumo.bytes += item.tamanho
+        if registrar is not None and not dry_run:
+            registrar(Registro(regra.nome, getattr(regra.acao, "tipo", "outra"),
+                               Path(os.path.abspath(caminho)),
+                               Path(os.path.abspath(novo_lugar)) if novo_lugar else None,
+                               item.tamanho, eh_pasta))
         if detalhar:
             logger.info("%s%s %s: %s (%s)", prefixo, "Pasta" if eh_pasta else "Arquivo",
                         regra.acao.descricao(), caminho.name, formatar_tamanho(item.tamanho))
