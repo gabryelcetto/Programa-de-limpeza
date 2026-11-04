@@ -6,13 +6,16 @@ from pathlib import Path
 import pytest
 
 from zelador import arquivos
+from zelador.arquivos import enviar_para_lixeira as lixeira_real
 from zelador.regras import (
     Apagar,
+    EnviarParaLixeira,
     ExtensaoEm,
     IdadeMinima,
     Item,
     Mover,
     NomeCorresponde,
+    Registro,
     Regra,
     TamanhoEntre,
     executar_regra,
@@ -414,3 +417,268 @@ def test_detalhar_falso_nao_muda_o_resumo_e_ainda_registra_erros(tmp_path, caplo
 
     assert (com.aplicados, com.bytes) == (sem.aplicados, sem.bytes) == (1, 5)
     assert erro.erros == 1 and "Erro em a.txt" in caplog.text
+
+
+# ------------------------------------------------------------- Lixeira
+
+
+def test_lixeira_envia_o_item_antigo_e_mantem_o_recente(tmp_path, lixeira_falsa):
+    antigo = criar(tmp_path, "antigo.txt", 10, "dado")
+    recente = criar(tmp_path, "recente.txt", 1)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert not antigo.exists() and recente.exists()
+    assert lixeira_falsa.enviados == [antigo]  # foi pela Lixeira, e só ele
+    assert (lixeira_falsa.pasta / "0_antigo.txt").read_text() == "dado"  # guardado, não destruído
+    assert (resumo.aplicados, resumo.ignorados, resumo.erros) == (1, 1, 0)
+
+
+def test_lixeira_em_simulacao_nao_envia_nada(tmp_path, lixeira_falsa):
+    antigo = criar(tmp_path, "antigo.txt", 10, "12345")
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()),
+                            dry_run=True)
+
+    assert antigo.exists() and lixeira_falsa.enviados == []
+    assert (resumo.aplicados, resumo.bytes) == (1, 5)
+
+
+def test_lixeira_nao_chama_apagar_de_vez(tmp_path, monkeypatch):
+    criar(tmp_path, "antigo.txt", 10)
+
+    def proibido(caminho):
+        raise AssertionError("não era para apagar de vez")
+
+    monkeypatch.setattr("zelador.regras.deletar_item", proibido)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert resumo.aplicados == 1
+
+
+def test_erro_da_lixeira_e_contado_e_nao_derruba_os_outros(tmp_path, monkeypatch, lixeira_falsa):
+    ruim = criar(tmp_path, "a_ruim.txt", 10)
+    bom = criar(tmp_path, "b_bom.txt", 10)
+
+    def enviar(item):
+        if Path(item).name == "a_ruim.txt":
+            raise OSError("o arquivo está em uso")
+        lixeira_falsa.enviar_para_lixeira(item)
+
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", enviar)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert (resumo.aplicados, resumo.erros) == (1, 1)
+    assert ruim.exists() and not bom.exists()
+
+
+def test_lixeira_pelo_caminho_real_da_funcao_so_com_a_biblioteca_falsa(
+        tmp_path, monkeypatch, lixeira_falsa, caplog):
+    """Passa pela função de verdade (inclusive a regra dos atalhos); só a biblioteca é falsa."""
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", lixeira_real)
+    pasta = tmp_path / "pasta_velha"
+    pasta.mkdir()
+    criar(pasta, "dentro.txt", 10)
+    envelhecer(pasta, 10)
+    criar(tmp_path, "solto.txt", 10)
+
+    with caplog.at_level("INFO", logger="zelador"):
+        resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert resumo.aplicados == 2 and resumo.erros == 0
+    assert sorted(p.name for p in lixeira_falsa.da_biblioteca) == ["pasta_velha", "solto.txt"]
+    assert "Pasta enviado(a) para a Lixeira: pasta_velha" in caplog.text
+    assert "Arquivo enviado(a) para a Lixeira: solto.txt" in caplog.text
+
+
+def test_lixeira_nao_vale_em_pasta_protegida(sistema_falso):
+    windows, _ = sistema_falso
+
+    with pytest.raises(ValueError, match="pasta do sistema"):
+        Regra("perigosa", windows, [IdadeMinima(7)], EnviarParaLixeira())
+
+
+def test_textos_da_acao_lixeira():
+    acao = EnviarParaLixeira()
+
+    assert acao.resumo() == "enviar para a Lixeira"
+    assert acao.descricao() == "enviado(a) para a Lixeira"
+    assert acao.ocupa(Path("qualquer")) is False
+
+
+# ------------------------------------------------------------- registrador
+
+
+class Gravador:
+    """Guarda o que o motor informa, como o histórico faria."""
+
+    def __init__(self):
+        self.registros = []
+
+    def __call__(self, registro):
+        self.registros.append(registro)
+
+
+def test_registrador_recebe_o_que_foi_movido_com_origem_destino_e_tamanho(tmp_path):
+    pasta = tmp_path / "downloads"
+    pasta.mkdir()
+    origem = criar(pasta, "relatorio.pdf", 10, "12345")
+    destino = tmp_path / "docs"
+    gravador = Gravador()
+
+    executar_regra(Regra("Organizar", pasta, [IdadeMinima(7)], Mover(destino)),
+                   registrar=gravador)
+
+    assert gravador.registros == [Registro(
+        "Organizar", "mover", origem, destino / "relatorio.pdf", 5, False)]
+
+
+def test_destino_registrado_e_o_lugar_final_mesmo_com_colisao_de_nome(tmp_path):
+    pasta = tmp_path / "downloads"
+    destino = tmp_path / "docs"
+    pasta.mkdir()
+    destino.mkdir()
+    (destino / "a.pdf").write_text("ja estava aqui")
+    criar(pasta, "a.pdf", 10)
+    gravador = Gravador()
+
+    executar_regra(Regra("r", pasta, [IdadeMinima(7)], Mover(destino)), registrar=gravador)
+
+    (registro,) = gravador.registros
+    assert registro.destino == destino / "a (1).pdf"  # o desfazer precisa saber ONDE ficou
+    assert registro.destino.exists()
+
+
+def test_pasta_movida_e_registrada_como_pasta(tmp_path):
+    pasta = tmp_path / "downloads"
+    (pasta / "projeto").mkdir(parents=True)
+    criar(pasta / "projeto", "a.txt", 10, "abc")
+    envelhecer(pasta / "projeto", 10)
+    gravador = Gravador()
+
+    executar_regra(Regra("r", pasta, [IdadeMinima(7)], Mover(tmp_path / "arquivo")),
+                   registrar=gravador)
+
+    (registro,) = gravador.registros
+    assert registro.eh_pasta is True and registro.tamanho == 3
+
+
+@pytest.mark.parametrize("acao, tipo", [(Apagar(), "apagar"), (EnviarParaLixeira(), "lixeira")])
+def test_apagar_e_lixeira_sao_registrados_sem_destino(tmp_path, acao, tipo):
+    antigo = criar(tmp_path, "antigo.txt", 10)
+    gravador = Gravador()
+
+    executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], acao), registrar=gravador)
+
+    (registro,) = gravador.registros
+    assert (registro.tipo, registro.origem, registro.destino) == (tipo, antigo, None)
+
+
+def test_simulacao_nunca_chama_o_registrador(tmp_path):
+    criar(tmp_path, "antigo.txt", 10)
+    gravador = Gravador()
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), dry_run=True,
+                            registrar=gravador)
+
+    assert resumo.aplicados == 1 and gravador.registros == []  # nada aconteceu: nada a registrar
+
+
+def test_so_o_que_foi_aplicado_e_registrado(tmp_path, monkeypatch):
+    ok = criar(tmp_path, "a_ok.txt", 10)
+    criar(tmp_path, "b_falha.txt", 10)
+    criar(tmp_path, "c_recente.txt", 1)
+    gravador = Gravador()
+
+    def apagar(caminho):
+        if caminho.name == "b_falha.txt":
+            raise PermissionError("em uso")
+        arquivos.deletar_item(caminho)
+
+    monkeypatch.setattr("zelador.regras.deletar_item", apagar)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), registrar=gravador)
+
+    assert (resumo.aplicados, resumo.erros, resumo.ignorados) == (1, 1, 1)
+    assert [r.origem for r in gravador.registros] == [ok]  # nem o que falhou nem o que ficou
+
+
+def test_registros_chegam_na_ordem_dos_itens(tmp_path):
+    for nome in ("c.txt", "a.txt", "b.txt"):
+        criar(tmp_path, nome, 10)
+    gravador = Gravador()
+
+    executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), registrar=gravador)
+
+    assert [r.origem.name for r in gravador.registros] == ["a.txt", "b.txt", "c.txt"]
+
+
+def test_acao_personalizada_sem_tipo_vira_outra(tmp_path):
+    criar(tmp_path, "a.txt", 10)
+    gravador = Gravador()
+
+    class Minha:
+        def descricao(self):
+            return "feito"
+
+        def aplicar(self, item):
+            return None
+
+        def ocupa(self, caminho):
+            return False
+
+    executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Minha()), registrar=gravador)
+
+    assert gravador.registros[0].tipo == "outra"
+
+
+def test_a_origem_registrada_e_sempre_absoluta(tmp_path, monkeypatch):
+    (tmp_path / "pasta").mkdir()
+    criar(tmp_path / "pasta", "a.txt", 10)
+    monkeypatch.chdir(tmp_path)
+    gravador = Gravador()
+
+    executar_regra(Regra("r", Path("pasta"), [IdadeMinima(7)], Apagar()), registrar=gravador)
+
+    assert gravador.registros[0].origem == tmp_path / "pasta" / "a.txt"
+    assert gravador.registros[0].origem.is_absolute()
+
+
+def test_sem_registrador_tudo_funciona_como_antes(tmp_path):
+    antigo = criar(tmp_path, "antigo.txt", 10)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()))
+
+    assert resumo.aplicados == 1 and not antigo.exists()
+
+
+def test_defeito_no_registrador_nao_e_escondido_como_erro_do_item(tmp_path):
+    criar(tmp_path, "a.txt", 10)
+
+    def quebrado(registro):
+        raise KeyError("bug no registrador")
+
+    with pytest.raises(KeyError):  # só OSError do ITEM é tratado; isto é outra coisa
+        executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], Apagar()), registrar=quebrado)
+
+
+def test_acoes_devolvem_o_novo_lugar_so_quando_movem(tmp_path):
+    arquivo = criar(tmp_path, "a.txt", 10)
+    item = Item(arquivo, False, 0.0, 1)
+
+    novo = Mover(tmp_path / "dest").aplicar(item)
+
+    assert novo == tmp_path / "dest" / "a.txt" and novo.exists()
+    outro = criar(tmp_path, "b.txt", 10)
+    assert Apagar().aplicar(Item(outro, False, 0.0, 1)) is None
+
+
+def test_o_tipo_da_acao_nao_vira_campo_nem_afeta_a_igualdade():
+    import dataclasses
+
+    assert (Apagar.tipo, EnviarParaLixeira.tipo, Mover.tipo) == ("apagar", "lixeira", "mover")
+    assert dataclasses.fields(Apagar) == () and dataclasses.fields(EnviarParaLixeira) == ()
+    assert [f.name for f in dataclasses.fields(Mover)] == ["destino"]
+    assert Apagar() == Apagar() and Mover(Path("/x")) == Mover(Path("/x"))

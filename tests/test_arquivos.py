@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from zelador import arquivos
+from zelador.arquivos import enviar_para_lixeira as lixeira_real
 
 
 def criar(pasta, nome, conteudo="x"):
@@ -152,3 +153,220 @@ def test_recusa_atalho_de_pasta_quando_o_lstat_so_diz_que_e_link(tmp_path, monke
 
     assert dado.read_text() == "nao mexer"
     assert alvo.exists()
+
+
+# ------------------------------------------------------------- Lixeira
+
+
+def test_restaurar_devolve_ao_lugar_com_o_nome_original(tmp_path):
+    guardado = criar(tmp_path, "a (1).pdf", "conteudo")
+    original = tmp_path / "pasta" / "a.pdf"
+
+    resultado = arquivos.restaurar_item(guardado, original)
+
+    assert resultado == original  # "a (1).pdf" volta a ser "a.pdf"
+    assert original.read_text() == "conteudo"
+    assert not guardado.exists()
+
+
+def test_restaurar_recria_a_pasta_original_que_sumiu(tmp_path):
+    guardado = criar(tmp_path, "a.txt")
+    original = tmp_path / "x" / "y" / "z" / "a.txt"
+
+    assert arquivos.restaurar_item(guardado, original) == original
+
+
+def test_restaurar_com_o_lugar_ocupado_nao_sobrescreve(tmp_path):
+    guardado = criar(tmp_path, "guardado.txt", "do historico")
+    pasta = tmp_path / "pasta"
+    pasta.mkdir()
+    ocupante = criar(pasta, "a.txt", "ja estava aqui")
+
+    resultado = arquivos.restaurar_item(guardado, pasta / "a.txt")
+
+    assert resultado == pasta / "a (1).txt"
+    assert resultado.read_text() == "do historico"
+    assert ocupante.read_text() == "ja estava aqui"
+
+
+def test_restaurar_pasta_inteira(tmp_path):
+    guardada = tmp_path / "arquivo" / "projeto (1)"
+    guardada.mkdir(parents=True)
+    criar(guardada, "dado.txt", "oi")
+    original = tmp_path / "projeto"
+
+    resultado = arquivos.restaurar_item(guardada, original)
+
+    assert (resultado / "dado.txt").read_text() == "oi"
+    assert resultado == original
+
+
+def test_restaurar_recusa_atalho_de_pasta(tmp_path):
+    alvo = tmp_path / "alvo"
+    alvo.mkdir()
+    atalho = tmp_path / "atalho"
+    try:
+        atalho.symlink_to(alvo, target_is_directory=True)
+    except OSError:
+        pytest.skip("sem permissão para criar symlinks neste ambiente")
+
+    with pytest.raises(OSError, match="atalho"):
+        arquivos.restaurar_item(atalho, tmp_path / "volta")
+
+    assert alvo.exists()
+
+
+def test_restaurar_falha_no_meio_desfaz_a_copia_parcial(tmp_path, monkeypatch):
+    guardado = criar(tmp_path, "g.txt", "original")
+    original = tmp_path / "volta" / "g.txt"
+
+    def move_quebrado(origem, destino):
+        shutil.copy2(origem, destino)  # copiou, mas não conseguiu apagar a origem
+        raise OSError("disco cheio")
+
+    monkeypatch.setattr(arquivos.shutil, "move", move_quebrado)
+
+    with pytest.raises(OSError, match="disco cheio"):
+        arquivos.restaurar_item(guardado, original)
+
+    assert guardado.read_text() == "original"
+    assert not original.exists()
+
+
+def test_a_lixeira_de_verdade_nunca_e_usada_nos_testes(lixeira_falsa):
+    """Rede de segurança: o conftest troca as duas camadas por uma Lixeira falsa."""
+    assert arquivos.enviar_para_lixeira == lixeira_falsa.enviar_para_lixeira
+    assert arquivos.send2trash.send2trash == lixeira_falsa.enviar_de_baixo_nivel
+
+
+def test_arquivo_vai_para_a_lixeira_com_o_caminho_como_texto(tmp_path, lixeira_falsa):
+    arquivo = criar(tmp_path, "a.txt", "dado")
+
+    lixeira_real(arquivo)
+
+    assert lixeira_falsa.da_biblioteca == [arquivo]
+    assert not arquivo.exists()
+    guardado = lixeira_falsa.pasta / "0_a.txt"
+    assert guardado.read_text() == "dado"  # não foi destruído: foi guardado
+
+
+def test_pasta_inteira_vai_para_a_lixeira(tmp_path, lixeira_falsa):
+    pasta = tmp_path / "projeto"
+    (pasta / "sub").mkdir(parents=True)
+    criar(pasta / "sub", "dado.txt", "oi")
+
+    lixeira_real(pasta)
+
+    assert not pasta.exists()
+    assert (lixeira_falsa.pasta / "0_projeto" / "sub" / "dado.txt").read_text() == "oi"
+
+
+def test_item_que_nao_existe_falha_sem_chamar_a_lixeira(tmp_path, lixeira_falsa):
+    with pytest.raises(OSError):
+        lixeira_real(tmp_path / "nao_existe.txt")
+
+    assert lixeira_falsa.da_biblioteca == []
+
+
+@pytest.mark.parametrize("erro", [
+    arquivos.send2trash.TrashPermissionError("a.txt"),
+    OSError("falha qualquer da biblioteca"),
+    OSError(13, "Permissão negada"),
+])
+def test_erro_da_lixeira_vira_oserror_com_mensagem_clara(tmp_path, monkeypatch, erro):
+    arquivo = criar(tmp_path, "a.txt")
+
+    def falhar(caminho):
+        raise erro
+
+    monkeypatch.setattr(arquivos.send2trash, "send2trash", falhar)
+
+    with pytest.raises(OSError) as capturado:  # o motor conta OSError como erro do item e segue
+        lixeira_real(arquivo)
+
+    mensagem = str(capturado.value)
+    assert "a.txt" in mensagem and "Lixeira" in mensagem and "em uso" in mensagem
+    assert capturado.value.__cause__ is erro  # o erro original continua acessível
+    assert arquivo.exists()
+
+
+def test_mensagem_final_inclui_o_codigo_do_sistema_quando_existe(tmp_path, monkeypatch):
+    arquivo = criar(tmp_path, "a.txt")
+
+    def negar(caminho):
+        raise OSError(13, "Permissão negada")
+
+    monkeypatch.setattr(arquivos.send2trash, "send2trash", negar)
+
+    with pytest.raises(OSError) as capturado:
+        lixeira_real(arquivo)
+
+    assert str(capturado.value).endswith("(código do sistema: 13)")
+
+
+def test_codigo_do_sistema_aparece_no_fim_da_mensagem():
+    assert arquivos._codigo(OSError(13, "x")) == " (código do sistema: 13)"
+    assert arquivos._codigo(OSError("sem número")) == ""
+    erro = OSError("x")
+    erro.winerror = -2144927705  # o código OLE que o Windows devolveu para arquivo em uso
+    assert arquivos._codigo(erro) == " (código do sistema: 0x80270027)"
+
+
+def test_arquivo_que_some_no_meio_continua_sendo_filenotfound(tmp_path, monkeypatch):
+    arquivo = criar(tmp_path, "a.txt")
+
+    def sumir(caminho):
+        raise FileNotFoundError(caminho)
+
+    monkeypatch.setattr(arquivos.send2trash, "send2trash", sumir)
+
+    with pytest.raises(FileNotFoundError):  # não é "em uso": o tipo certo é preservado
+        lixeira_real(arquivo)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions só existem no Windows")
+def test_junction_nunca_vai_para_a_lixeira_e_o_destino_dela_fica_intacto(tmp_path, lixeira_falsa):
+    alvo = tmp_path / "alvo"
+    alvo.mkdir()
+    dado = criar(alvo, "dado.txt", "nao mexer")
+    atalho = tmp_path / "atalho"
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(atalho), str(alvo)],
+                   check=True, capture_output=True)
+
+    lixeira_real(atalho)
+
+    assert not atalho.exists()  # o atalho saiu
+    assert dado.read_text() == "nao mexer"  # o conteúdo apontado não foi tocado
+    assert lixeira_falsa.da_biblioteca == []  # e a Lixeira nem foi consultada
+
+
+def test_symlink_de_pasta_nunca_vai_para_a_lixeira(tmp_path, lixeira_falsa):
+    alvo = tmp_path / "alvo"
+    alvo.mkdir()
+    dado = criar(alvo, "dado.txt", "nao mexer")
+    atalho = tmp_path / "atalho"
+    try:
+        atalho.symlink_to(alvo, target_is_directory=True)
+    except OSError:
+        pytest.skip("sem permissão para criar symlinks neste ambiente")
+
+    lixeira_real(atalho)
+
+    assert not atalho.is_symlink()
+    assert dado.read_text() == "nao mexer"
+    assert lixeira_falsa.da_biblioteca == []
+
+
+def test_symlink_de_arquivo_nunca_vai_para_a_lixeira(tmp_path, lixeira_falsa):
+    alvo = criar(tmp_path, "alvo.txt", "nao mexer")
+    atalho = tmp_path / "atalho.txt"
+    try:
+        atalho.symlink_to(alvo)
+    except OSError:
+        pytest.skip("sem permissão para criar symlinks neste ambiente")
+
+    lixeira_real(atalho)
+
+    assert not atalho.is_symlink()
+    assert alvo.read_text() == "nao mexer"
+    assert lixeira_falsa.da_biblioteca == []

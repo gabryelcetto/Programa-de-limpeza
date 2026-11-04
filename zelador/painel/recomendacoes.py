@@ -21,7 +21,7 @@ import psutil
 
 from .. import discos as _discos
 from ..arquivos import formatar_tamanho
-from ..caminhos import obter_pasta_downloads
+from ..caminhos import obter_pasta_documentos, obter_pasta_downloads
 from ..regras import Apagar, ExtensaoEm, IdadeMinima, Mover, Regra, Resumo, executar_regra
 
 logger = logging.getLogger("zelador")
@@ -214,7 +214,7 @@ def coletar_contexto(pasta_downloads: Optional[Path] = None,
     return Contexto(
         discos=_discos.coletar_discos(),
         pasta_downloads=downloads if downloads.is_dir() else None,
-        pasta_pdfs=pasta_pdfs or Path.home() / "Documents" / "PDFs",
+        pasta_pdfs=pasta_pdfs or obter_pasta_documentos() / "PDFs",
     )
 
 

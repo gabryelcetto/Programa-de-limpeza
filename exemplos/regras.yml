@@ -6,8 +6,10 @@
 # As regras rodam em ORDEM. Cada uma olha os itens que estão diretamente na sua pasta
 # (uma subpasta conta como um item só) e só age se TODAS as condições forem verdadeiras.
 #
-# Caminhos: {downloads} é a pasta Downloads real do usuário (mesmo se estiver no OneDrive);
-# ~ é a pasta pessoal; ${VARIAVEL} usa uma variável de ambiente. Devem ser absolutos.
+# Caminhos: {downloads}, {documentos} e {imagens} são as pastas REAIS do usuário (mesmo no
+# OneDrive, e mesmo com outro nome, como "Documentos"). Prefira-os a ~/Documents, que pode
+# apontar para outra pasta. ~ é a pasta pessoal; ${VARIAVEL} usa uma variável de ambiente.
+# Os caminhos devem ser absolutos.
 # Caminhos do Windows podem ficar sem aspas ou entre aspas simples.
 #
 # Cuidado com o YAML: no, yes, on e off SEM aspas viram falso/verdadeiro.
@@ -27,20 +29,22 @@ regras:
       extensoes: [pdf]
       idade_dias: 1
     acao:
-      mover: ~/Documents/PDFs
+      mover: "{documentos}/PDFs"
 
   # 2. Instaladores grandes, que ninguém mais vai usar depois de instalar.
-  - nome: Apagar instaladores antigos
+  #    `lixeira` envia para a Lixeira do Windows (dá para restaurar). Use `apagar` só se
+  #    quiser apagar DE VEZ, sem volta. Atenção: a Lixeira não libera espaço até ser esvaziada.
+  - nome: Enviar instaladores antigos para a Lixeira
     pasta: "{downloads}"
     condicoes:
       extensoes: [exe, msi]
       tamanho_min: 20MB
       idade_dias: 3
-    acao: apagar
+    acao: lixeira
 
   # 3. Rede de segurança, por último: o que sobrou e está parado há mais de 30 dias.
   - nome: Limpar downloads parados
     pasta: "{downloads}"
     condicoes:
       idade_dias: 30
-    acao: apagar
+    acao: lixeira

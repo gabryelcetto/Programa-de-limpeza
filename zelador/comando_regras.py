@@ -11,8 +11,9 @@ from pathlib import Path
 from . import caminhos
 from .arquivos import formatar_tamanho
 from .configuracao import Carga, ErroConfiguracao, carregar_regras
+from .historico import Historico
 from .logs import logger
-from .opcoes import adicionar_dry_run
+from .opcoes import adicionar_dry_run, adicionar_historico
 from .regras import Resumo, executar_regra
 
 
@@ -26,6 +27,7 @@ def registrar(subparsers, comum: argparse.ArgumentParser) -> None:
                     "ignoradas com um aviso e as demais continuam.",
     )
     adicionar_dry_run(rodar)
+    adicionar_historico(rodar)
     rodar.add_argument("--config", type=Path, default=None, help=ajuda_config)
     rodar.set_defaults(executar=executar_rodar)
 
@@ -67,12 +69,14 @@ def executar_rodar(args: argparse.Namespace) -> int:
     if not carga.regras:
         logger.warning("Nenhuma regra válida para executar.")
 
+    gravador = Historico(args.historico or caminhos.arquivo_de_historico_padrao()).gravador("rodar")
     total = Resumo()
+    movidos = 0
     houve_falha = bool(carga.erros)
     for regra in carga.regras:
         logger.info("Regra '%s' em %s", regra.nome, regra.pasta)
         try:
-            resumo = executar_regra(regra, args.dry_run)
+            resumo = executar_regra(regra, args.dry_run, registrar=gravador)
         except OSError as erro:  # ex.: a pasta da regra não existe
             logger.error("Regra '%s': não foi possível ler a pasta %s: %s",
                          regra.nome, regra.pasta, erro)
@@ -81,10 +85,14 @@ def executar_rodar(args: argparse.Namespace) -> int:
         total.aplicados += resumo.aplicados
         total.erros += resumo.erros
         total.bytes += resumo.bytes
+        if getattr(regra.acao, "tipo", "") == "mover":
+            movidos += resumo.aplicados
 
     verbo = "seriam aplicados" if args.dry_run else "aplicados"
     logger.info("Concluído: %d itens %s (%s), %d erros.",
                 total.aplicados, verbo, formatar_tamanho(total.bytes), total.erros)
+    if movidos and not args.dry_run and not gravador.falhas:
+        logger.info("Para devolver o que foi movido: zelador desfazer")
     return 1 if houve_falha or total.erros else 0
 
 

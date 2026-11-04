@@ -3,3 +3,4 @@
 # e listadas em pyproject.toml ([project.optional-dependencies] dev).
 pyyaml>=6.0
 psutil>=5.9
+send2trash>=1.8

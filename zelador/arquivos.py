@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
 
+import send2trash
+
 
 @dataclass
 class Medicao:
@@ -107,6 +109,33 @@ def deletar_item(item: Path) -> None:
             item.unlink()
 
 
+def _codigo(erro: OSError) -> str:
+    """O código de erro do sistema, para diagnóstico, no fim da mensagem (ou nada)."""
+    codigo = getattr(erro, "winerror", None)
+    if codigo is not None:
+        return f" (código do sistema: {codigo & 0xFFFFFFFF:#010x})"
+    return f" (código do sistema: {erro.errno})" if erro.errno else ""
+
+
+def enviar_para_lixeira(item: Path) -> None:
+    """Manda o item para a Lixeira do sistema, de onde dá para restaurá-lo. Levanta OSError.
+
+    Atalhos (symlink/junction) nunca vão para a Lixeira: só o atalho é removido, como em
+    `deletar_item`, porque o que a Lixeira faria com o conteúdo apontado por ele não é garantido.
+    Atenção: um item na Lixeira ainda ocupa espaço no disco até ela ser esvaziada, e o Windows
+    apaga de vez o que for maior que o limite da Lixeira ou estiver num disco sem Lixeira."""
+    if _eh_link(item.lstat()):
+        deletar_item(item)
+        return
+    try:
+        send2trash.send2trash(str(item))
+    except FileNotFoundError:
+        raise
+    except OSError as erro:  # a mensagem original é um código do sistema ou só o caminho
+        raise OSError(f"o sistema não deixou enviar '{item.name}' para a Lixeira: o arquivo pode "
+                      f"estar em uso por outro programa ou sem permissão{_codigo(erro)}") from erro
+
+
 def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
     """Se o nome já existe, usa 'nome (1).ext', 'nome (2).ext'... Nunca sobrescreve."""
     if not os.path.lexists(destino):
@@ -118,19 +147,18 @@ def _caminho_livre(destino: Path, eh_pasta: bool) -> Path:
             return candidato
 
 
-def mover_item(item: Path, pasta_destino: Path) -> Path:
-    """Move o item para a pasta (criada se preciso) e devolve o novo caminho.
-
-    Não sobrescreve nada. Se a movimentação falhar no meio (ex.: entre volumes), a cópia
-    parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
+def _mover_para(item: Path, pasta: Path, nome: str) -> Path:
+    """Move `item` para `pasta/nome` (ou `nome (1)`, `nome (2)`... se já existir) e devolve o novo
+    caminho. Nunca sobrescreve, recusa atalhos de pasta e, se a movimentação falhar no meio (ex.:
+    entre volumes), desfaz a cópia parcial. Levanta OSError em caso de falha."""
     info = item.lstat()
     eh_pasta = _eh_pasta(info)
     # no Linux o lstat de um symlink para pasta não traz o bit de diretório; is_dir() segue o link
     if _eh_link(info) and (eh_pasta or item.is_dir()):
         raise OSError(f"'{item.name}' é um atalho de pasta; atalhos não são movidos")
 
-    pasta_destino.mkdir(parents=True, exist_ok=True)
-    destino = _caminho_livre(pasta_destino / item.name, eh_pasta)
+    pasta.mkdir(parents=True, exist_ok=True)
+    destino = _caminho_livre(pasta / nome, eh_pasta)
     try:
         shutil.move(item, destino)
     except OSError:
@@ -142,6 +170,21 @@ def mover_item(item: Path, pasta_destino: Path) -> Path:
                 pass
         raise
     return destino
+
+
+def mover_item(item: Path, pasta_destino: Path) -> Path:
+    """Move o item para a pasta (criada se preciso) e devolve o novo caminho.
+
+    Não sobrescreve nada. Se a movimentação falhar no meio (ex.: entre volumes), a cópia
+    parcial é desfeita, para não deixar duplicatas. Levanta OSError em caso de falha."""
+    return _mover_para(item, pasta_destino, item.name)
+
+
+def restaurar_item(atual: Path, original: Path) -> Path:
+    """Devolve `atual` ao lugar `original`, com o NOME original (e não o que ele tem agora: um
+    "a (1).pdf" volta a ser "a.pdf"). Se o lugar original estiver ocupado, não sobrescreve: o
+    item volta como "nome (1)". Devolve o caminho em que ele ficou. Levanta OSError."""
+    return _mover_para(atual, original.parent, original.name)
 
 
 def formatar_tamanho(bytes_: int) -> str:

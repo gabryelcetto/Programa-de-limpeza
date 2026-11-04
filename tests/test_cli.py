@@ -133,11 +133,24 @@ def test_pasta_inexistente_retorna_um(ambiente):
     assert codigo == 1
 
 
-def test_erro_na_limpeza_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
+def test_erro_ao_apagar_de_vez_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
     def falhar(item):
         raise PermissionError("arquivo em uso")
 
     monkeypatch.setattr(regras, "deletar_item", falhar)
+
+    codigo = cli.main(["limpar", "--permanente", "--pasta", str(ambiente.downloads),
+                       "--log-dir", str(ambiente.pasta_logs)])
+
+    assert codigo == 1
+    assert ambiente.antigo.exists()
+
+
+def test_erro_ao_enviar_para_a_lixeira_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
+    def falhar(item):
+        raise OSError("arquivo em uso")
+
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", falhar)
 
     codigo = cli.main(["limpar", "--pasta", str(ambiente.downloads),
                        "--log-dir", str(ambiente.pasta_logs)])
@@ -146,18 +159,76 @@ def test_erro_na_limpeza_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
     assert ambiente.antigo.exists()
 
 
-def test_relatorio_final_informa_quantidade_tamanho_e_mantidos(ambiente, caplog):
-    cli.main(["limpar", "--pasta", str(ambiente.downloads), "--log-dir", str(ambiente.pasta_logs)])
+def executar_limpar(ambiente, *extras):
+    return cli.main(["limpar", *extras, "--pasta", str(ambiente.downloads),
+                     "--log-dir", str(ambiente.pasta_logs)])
 
+
+def test_relatorio_padrao_diz_que_foi_para_a_lixeira_e_avisa_do_espaco(ambiente, caplog):
+    executar_limpar(ambiente)
+
+    assert "enviando para a Lixeira" in caplog.text  # a linha de início diz o que vai acontecer
+    assert "Concluído: 1 enviados para a Lixeira (1.0 B), 1 mantidos, 0 erros." in caplog.text
+    assert "O espaço em disco só volta quando você esvaziar a Lixeira." in caplog.text
+
+
+def test_relatorio_da_simulacao_padrao_diz_seriam_enviados_e_nao_avisa_do_espaco(ambiente, caplog):
+    executar_limpar(ambiente, "--dry-run")
+
+    assert ("Concluído: 1 seriam enviados para a Lixeira (1.0 B), 1 mantidos, 0 erros."
+            in caplog.text)
+    assert "[SIMULAÇÃO] Arquivo enviado(a) para a Lixeira: antigo.txt (1.0 B)" in caplog.text
+    assert "esvaziar a Lixeira" not in caplog.text  # nada aconteceu: não há espaço a explicar
+
+
+def test_relatorio_permanente_diz_apagados_e_nao_fala_de_lixeira(ambiente, caplog):
+    executar_limpar(ambiente, "--permanente")
+
+    assert "apagando de vez" in caplog.text
     assert "Concluído: 1 apagados (1.0 B), 1 mantidos, 0 erros." in caplog.text
+    assert "esvaziar a Lixeira" not in caplog.text
 
 
-def test_relatorio_final_da_simulacao_diz_seriam_apagados(ambiente, caplog):
-    cli.main(["limpar", "--dry-run", "--pasta", str(ambiente.downloads),
-              "--log-dir", str(ambiente.pasta_logs)])
+def test_relatorio_da_simulacao_permanente_diz_seriam_apagados(ambiente, caplog):
+    executar_limpar(ambiente, "--permanente", "--dry-run")
 
     assert "Concluído: 1 seriam apagados (1.0 B), 1 mantidos, 0 erros." in caplog.text
     assert "[SIMULAÇÃO] Arquivo deletado(a): antigo.txt (1.0 B)" in caplog.text
+
+
+def test_sem_nada_para_limpar_nao_avisa_do_espaco(ambiente, caplog):
+    executar_limpar(ambiente, "--dias", "60")  # o "antigo" tem 30 dias: não é antigo o bastante
+
+    assert "Concluído: 0 enviados para a Lixeira" in caplog.text
+    assert "esvaziar a Lixeira" not in caplog.text
+
+
+def test_padrao_usa_a_lixeira_e_permanente_nao(ambiente, lixeira_falsa):
+    executar_limpar(ambiente)
+    assert lixeira_falsa.enviados == [ambiente.antigo]
+
+    outro = ambiente.downloads / "outro.txt"
+    outro.write_text("x")
+    t = time.time() - 30 * 24 * 3600
+    os.utime(outro, (t, t))
+    executar_limpar(ambiente, "--permanente")
+
+    assert not outro.exists()
+    assert lixeira_falsa.enviados == [ambiente.antigo]  # o permanente não passou pela Lixeira
+
+
+def test_ajuda_do_limpar_mostra_a_opcao_permanente(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["limpar", "--help"])
+
+    assert "--permanente" in capsys.readouterr().out
+
+
+def test_chamada_sem_comando_equivale_a_limpar_com_lixeira(ambiente, lixeira_falsa):
+    codigo = cli.main(["--pasta", str(ambiente.downloads), "--log-dir", str(ambiente.pasta_logs)])
+
+    assert codigo == 0
+    assert lixeira_falsa.enviados == [ambiente.antigo]  # a compatibilidade herda o novo padrão
 
 
 def test_grava_log_do_dia(ambiente):
