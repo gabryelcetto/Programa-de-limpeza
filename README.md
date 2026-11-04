@@ -72,7 +72,7 @@ regras:
       extensoes: [pdf]
       idade_dias: 1
     acao:
-      mover: ~/Documents/PDFs
+      mover: "{documentos}/PDFs"
 
   - nome: Limpar downloads parados
     pasta: "{downloads}"
@@ -103,8 +103,10 @@ modelo comentado em [`exemplos/regras.yml`](exemplos/regras.yml).
 `mover: <pasta de destino>`. Mover nunca sobrescreve: se o nome já existe
 no destino, o arquivo novo vira `nome (1).ext`.
 
-**Caminhos** devem ser absolutos. Use `{downloads}` (a pasta Downloads real do usuário), `~` (pasta
-pessoal) ou `${VARIAVEL}` (variável de ambiente).
+**Caminhos** devem ser absolutos. Use `{downloads}`, `{documentos}` ou `{imagens}` (as pastas
+**reais** do usuário: elas podem estar no OneDrive e ter outro nome, como "Documentos", e por isso
+`~/Documents` pode apontar para outra pasta), `~` (pasta pessoal) ou `${VARIAVEL}` (variável de
+ambiente).
 
 **Códigos de saída de `rodar` e `listar`:** `0` tudo certo, `1` alguma regra foi ignorada por ser
 inválida ou houve erro ao executar, `2` o arquivo não existe ou o YAML está inválido. O `listar`

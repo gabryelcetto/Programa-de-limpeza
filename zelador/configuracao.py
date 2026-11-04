@@ -34,6 +34,13 @@ _CONDICOES = ("idade_dias", "extensoes", "tamanho_min", "tamanho_max", "nome")
 _UNIDADES = {"B": 1, "KB": 1024, "MB": 1024**2, "GB": 1024**3, "TB": 1024**4}
 _TAMANHO = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(B|KB|MB|GB|TB)?$", re.IGNORECASE)
 _VARIAVEL_NAO_EXPANDIDA = re.compile(r"%\w[^%]*%|\$\{?\w")
+# Atalhos para as pastas do usuário; o valor é o nome da função em `caminhos` (procurada na hora,
+# para que os testes possam trocá-la)
+_ATALHOS = {
+    "{downloads}": "obter_pasta_downloads",
+    "{documentos}": "obter_pasta_documentos",
+    "{imagens}": "obter_pasta_imagens",
+}
 
 
 class ErroConfiguracao(Exception):
@@ -192,13 +199,16 @@ def _recusar_chaves_desconhecidas(mapa: dict, validas: tuple, onde: str) -> None
 
 
 def _caminho(valor, campo: str) -> Path:
-    """Aceita ~, variáveis de ambiente (${VAR} ou %VAR%) e {downloads}. Exige caminho absoluto,
+    """Aceita ~, variáveis de ambiente (${VAR} ou %VAR%) e os atalhos {downloads}, {documentos} e
+    {imagens} (as pastas de verdade do usuário, mesmo no OneDrive). Exige caminho absoluto,
     para a regra nunca depender da pasta de onde o programa foi aberto."""
     if not isinstance(valor, str) or not valor.strip():
         raise _ErroValidacao(f"'{campo}' deve ser um caminho (texto)")
     texto = valor.strip()
-    if texto.startswith("{downloads}"):
-        texto = str(caminhos.obter_pasta_downloads()) + texto[len("{downloads}"):]
+    for marcador, funcao in _ATALHOS.items():
+        if texto.startswith(marcador):
+            texto = str(getattr(caminhos, funcao)()) + texto[len(marcador):]
+            break
     texto = os.path.expandvars(os.path.expanduser(texto))
     if _VARIAVEL_NAO_EXPANDIDA.search(texto):
         raise _ErroValidacao(f"'{campo}': variável de ambiente indefinida em '{valor}'")

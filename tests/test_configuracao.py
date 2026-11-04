@@ -370,6 +370,54 @@ def test_nome_que_nao_e_texto(valor):
 # --------------------------------------------------------- caminhos
 
 
+@pytest.fixture
+def pastas_do_usuario(tmp_path, monkeypatch):
+    """Documentos e Imagens falsas, num lugar DIFERENTE de ~/Documents e ~/Pictures."""
+    documentos = tmp_path / "OneDrive" / "Documentos"
+    imagens = tmp_path / "OneDrive" / "Imagens"
+    monkeypatch.setattr(caminhos, "obter_pasta_documentos", lambda: documentos)
+    monkeypatch.setattr(caminhos, "obter_pasta_imagens", lambda: imagens)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "casa")
+    return documentos, imagens
+
+
+def test_atalhos_documentos_e_imagens_apontam_para_as_pastas_de_verdade(pastas_do_usuario):
+    documentos, imagens = pastas_do_usuario
+    texto = regra_com("").replace("acao: apagar", "acao: {mover: '{documentos}/PDFs'}")
+
+    carga = carregar(texto)
+
+    assert carga.erros == []
+    assert carga.regras[0].acao == Mover(documentos / "PDFs")
+    carga = carregar(regra_com("").replace('"{downloads}"', '"{imagens}/Fotos"'))
+    assert carga.regras[0].pasta == imagens / "Fotos"
+
+
+def test_atalho_documentos_nao_e_o_mesmo_que_til_documents(
+        pastas_do_usuario, tmp_path, monkeypatch):
+    documentos, _ = pastas_do_usuario
+    monkeypatch.setenv("HOME", str(tmp_path / "casa"))  # é daqui que o ~ sai
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "casa"))
+    com_atalho = carregar(regra_com("").replace('"{downloads}"', '"{documentos}"'))
+    com_til = carregar(regra_com("").replace('"{downloads}"', "~/Documents"))
+
+    assert com_atalho.regras[0].pasta == documentos
+    assert com_til.regras[0].pasta == tmp_path / "casa" / "Documents"
+    assert com_atalho.regras[0].pasta != com_til.regras[0].pasta  # o motivo dos atalhos existirem
+
+
+def test_atalho_desconhecido_e_recusado(pastas_do_usuario):
+    mensagem = invalida(regra_yaml(pasta='pasta: "{musicas}/x"'))
+
+    assert "caminho absoluto" in mensagem
+
+
+def test_atalho_so_vale_no_comeco_do_caminho(pastas_do_usuario, tmp_path):
+    carga = carregar(regra_com("").replace('"{downloads}"', f"'{tmp_path}/x/{{documentos}}'"))
+
+    assert carga.regras[0].pasta == tmp_path / "x" / "{documentos}"  # não é expandido no meio
+
+
 def test_downloads_com_subpasta(downloads_falso):
     carga = carregar(regra_com("").replace('"{downloads}"', '"{downloads}/sub/pasta"'))
 

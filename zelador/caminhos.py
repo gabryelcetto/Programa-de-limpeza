@@ -7,12 +7,16 @@ import uuid
 from ctypes import wintypes
 from pathlib import Path
 
-# GUID do Known Folder "Downloads" (respeita redirecionamento por OneDrive/GPO)
+# GUIDs dos Known Folders do Windows (respeitam redirecionamento por OneDrive/GPO)
 FOLDERID_DOWNLOADS = "{374DE290-123F-4565-9164-39C4925E467B}"
+FOLDERID_DOCUMENTS = "{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
+FOLDERID_PICTURES = "{33E28130-4E1E-4676-835A-98395C3BC3BB}"
 
 
-def obter_pasta_downloads() -> Path:
-    """Resolve a pasta de Downloads real do usuário (Known Folders no Windows)."""
+def _pasta_conhecida(folderid: str, nome_padrao: str) -> Path:
+    """A pasta do usuário que o Windows chama por esse identificador (Known Folder). Ela pode
+    estar redirecionada (OneDrive, política de grupo) e até ter outro nome: `~/Documents` não
+    serve. Fora do Windows, ou se a API falhar, cai em ~/<nome_padrao>."""
     if sys.platform == "win32":
         try:
 
@@ -24,7 +28,7 @@ def obter_pasta_downloads() -> Path:
                     ("Data4", ctypes.c_ubyte * 8),
                 ]
 
-            guid = GUID.from_buffer_copy(uuid.UUID(FOLDERID_DOWNLOADS).bytes_le)
+            guid = GUID.from_buffer_copy(uuid.UUID(folderid).bytes_le)
             caminho = ctypes.c_wchar_p()
             resultado = ctypes.windll.shell32.SHGetKnownFolderPath(
                 ctypes.byref(guid), 0, None, ctypes.byref(caminho)
@@ -37,7 +41,19 @@ def obter_pasta_downloads() -> Path:
         except Exception:
             pass  # cai no caminho padrão abaixo
 
-    return Path.home() / "Downloads"
+    return Path.home() / nome_padrao
+
+
+def obter_pasta_downloads() -> Path:
+    return _pasta_conhecida(FOLDERID_DOWNLOADS, "Downloads")
+
+
+def obter_pasta_documentos() -> Path:
+    return _pasta_conhecida(FOLDERID_DOCUMENTS, "Documents")
+
+
+def obter_pasta_imagens() -> Path:
+    return _pasta_conhecida(FOLDERID_PICTURES, "Pictures")
 
 
 def arquivo_de_regras_padrao() -> Path:

@@ -420,3 +420,21 @@ def test_coletar_contexto_sem_pasta_downloads_nao_quebra(tmp_path):
 
     assert ctx.pasta_downloads is None
     assert rec.downloads_parados(ctx) == [] and rec.pdfs_soltos(ctx) == []
+
+
+def test_destino_padrao_dos_pdfs_e_a_pasta_documentos_de_verdade(tmp_path, monkeypatch):
+    documentos = tmp_path / "OneDrive" / "Documentos"
+    monkeypatch.setattr(rec, "obter_pasta_documentos", lambda: documentos)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "casa")
+
+    ctx = rec.coletar_contexto(pasta_downloads=tmp_path / "nao_existe")
+
+    assert ctx.pasta_pdfs == documentos / "PDFs"
+    assert ctx.pasta_pdfs != tmp_path / "casa" / "Documents" / "PDFs"  # o antigo (errado)
+
+
+def test_destino_dos_pdfs_informado_tem_prioridade(tmp_path):
+    ctx = rec.coletar_contexto(pasta_downloads=tmp_path / "nao_existe",
+                               pasta_pdfs=tmp_path / "meus_pdfs")
+
+    assert ctx.pasta_pdfs == tmp_path / "meus_pdfs"
