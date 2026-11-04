@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -82,11 +83,41 @@ def test_retrocompatibilidade_so_opcoes_equivale_a_limpar(ambiente):
     assert ambiente.antigo.exists()  # dry-run foi respeitado, ou seja, chegou em `limpar`
 
 
-def test_retrocompatibilidade_sem_argumentos_equivale_a_limpar(ambiente):
+def test_sem_argumentos_mostra_a_ajuda_e_nao_mexe_em_nada(ambiente, capsys, monkeypatch):
+    """Duplo clique no .exe chama o programa sem argumentos: isso nunca pode limpar Downloads."""
+    monkeypatch.setattr(cli, "_console_proprio", lambda: False)
+
     assert cli.main([]) == 0
 
-    assert not ambiente.antigo.exists()
-    assert ambiente.recente.exists()
+    saida = capsys.readouterr().out
+    assert "COMANDO" in saida and "Nada foi alterado" in saida
+    assert ambiente.antigo.exists() and ambiente.recente.exists()
+
+
+def test_sem_argumentos_com_console_proprio_espera_antes_de_fechar(ambiente, monkeypatch):
+    esperou = []
+    monkeypatch.setattr(cli, "_console_proprio", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda texto="": esperou.append(texto) or "")
+
+    cli.main([])
+
+    assert len(esperou) == 1
+
+
+def test_com_terminal_ja_aberto_nao_espera_enter(ambiente, monkeypatch):
+    def nao_deveria_esperar(texto=""):
+        raise AssertionError("não deveria esperar")
+
+    monkeypatch.setattr(cli, "_console_proprio", lambda: False)
+    monkeypatch.setattr("builtins.input", nao_deveria_esperar)
+
+    cli.main([])
+
+
+def test_console_proprio_so_existe_no_windows(monkeypatch):
+    monkeypatch.setattr(cli.sys, "platform", "linux")
+
+    assert cli._console_proprio() is False
 
 
 def test_subcomando_desconhecido_e_rejeitado(ambiente, capsys):
@@ -131,6 +162,20 @@ def test_pasta_inexistente_retorna_um(ambiente):
                        "--log-dir", str(ambiente.pasta_logs)])
 
     assert codigo == 1
+
+
+def test_pasta_que_nao_pode_ser_lida_retorna_um_sem_traceback(ambiente, monkeypatch, caplog):
+    def acesso_negado(self):
+        raise PermissionError(13, "Acesso negado", str(self))
+
+    monkeypatch.setattr(Path, "iterdir", acesso_negado)
+
+    codigo = cli.main(["limpar", "--pasta", str(ambiente.downloads),
+                       "--log-dir", str(ambiente.pasta_logs)])
+
+    assert codigo == 1
+    assert "Não foi possível ler a pasta" in caplog.text
+    assert ambiente.antigo.exists()
 
 
 def test_erro_ao_apagar_de_vez_resulta_em_codigo_de_saida_um(ambiente, monkeypatch):
@@ -265,3 +310,13 @@ def test_limpar_recusa_pasta_protegida_sem_listar_nem_apagar(ambiente, monkeypat
 
     assert codigo == 2
     assert "raiz de um disco" in caplog.text
+
+
+def test_sem_teclado_no_console_nao_quebra(ambiente, monkeypatch):
+    def sem_teclado(texto=""):
+        raise EOFError
+
+    monkeypatch.setattr(cli, "_console_proprio", lambda: True)
+    monkeypatch.setattr("builtins.input", sem_teclado)
+
+    assert cli.main([]) == 0

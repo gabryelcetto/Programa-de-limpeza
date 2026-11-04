@@ -41,6 +41,16 @@ def test_idade_minima_exige_mais_que_o_limite():
     assert not cond.corresponde(item(dias=1), AGORA)
 
 
+@pytest.mark.parametrize("instante, antigo", [
+    (1e15, False),  # ano ~31 mil: o NTFS guarda, o Python não representa; no futuro, não é antigo
+    (-1e15, True),  # o mesmo no passado distante: é antigo
+])
+def test_idade_com_data_que_o_python_nao_representa_nao_vira_erro(instante, antigo):
+    estranho = Item(Path("estranho.txt"), False, instante, 1)
+
+    assert IdadeMinima(7).corresponde(estranho, AGORA) is antigo
+
+
 @pytest.mark.parametrize("dias", [0, -1])
 def test_idade_minima_rejeita_zero_e_negativo(dias):
     with pytest.raises(ValueError):
@@ -113,6 +123,21 @@ def test_nome_rejeita_regex_invalida():
 
 
 # ----------------------------------------------------------------- regra
+
+
+@pytest.mark.parametrize("escrita", ["{p}", "{p}/", "{p}/sub/..", "{P}"])
+def test_regra_que_move_para_a_propria_pasta_e_recusada(tmp_path, escrita):
+    """Senão, a cada execução o arquivo seria 'movido' para onde já está: a.pdf, a (1).pdf..."""
+    if escrita == "{P}" and os.path.normcase("A") == "A":
+        pytest.skip("só o Windows ignora maiúsculas nos caminhos")
+    destino = Path(escrita.format(p=tmp_path, P=str(tmp_path).upper()))
+
+    with pytest.raises(ValueError, match="própria pasta"):
+        Regra("r", tmp_path, [ExtensaoEm(("pdf",))], Mover(destino))
+
+
+def test_regra_que_move_para_uma_subpasta_continua_valendo(tmp_path):
+    Regra("r", tmp_path, [ExtensaoEm(("pdf",))], Mover(tmp_path / "PDFs"))
 
 
 def test_regra_sem_condicao_e_rejeitada(tmp_path):

@@ -72,6 +72,9 @@ def executar(args: argparse.Namespace) -> int:
     except ValueError as erro:  # pasta protegida (raiz do disco, pasta do sistema...)
         logger.error("%s", erro)
         return 2
+    except OSError as erro:  # a pasta existe, mas não pôde ser lida (sem permissão...)
+        logger.error("Não foi possível ler a pasta %s: %s", pasta, erro)
+        return 1
 
     destino = "apagados" if args.permanente else "enviados para a Lixeira"
     verbo = f"seriam {destino}" if args.dry_run else destino

@@ -154,6 +154,31 @@ def test_caminho_com_aspas_e_recusado(python_falso):
         comando_da_tarefa(Path('pasta"ruim') / "r.yml")
 
 
+@pytest.mark.parametrize("caminho, citado", [
+    ("C:\\", '"C:\\\\"'),  # raiz de disco: a barra final é dobrada
+    ("C:\\pasta\\\\", '"C:\\pasta\\\\\\\\"'),
+    ("C:\\pasta", '"C:\\pasta"'),  # barras no meio ficam como estão
+])
+def test_barra_no_fim_e_dobrada_para_nao_virar_aspa(caminho, citado):
+    assert agenda._citar(caminho) == citado
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="usa a divisão de argumentos do Windows")
+def test_o_windows_entrega_a_raiz_do_disco_inteira_ao_programa():
+    import ctypes
+    from ctypes import wintypes
+
+    dividir = ctypes.windll.shell32.CommandLineToArgvW
+    dividir.restype = ctypes.POINTER(wintypes.LPWSTR)
+    quantos = ctypes.c_int()
+    linha = f"zelador.exe --log-dir {agenda._citar('C:' + chr(92))} --dry-run"
+
+    partes = dividir(linha, ctypes.byref(quantos))
+
+    assert [partes[i] for i in range(quantos.value)] == [
+        "zelador.exe", "--log-dir", "C:" + chr(92), "--dry-run"]
+
+
 # ------------------------------------------------------------------- XML
 
 

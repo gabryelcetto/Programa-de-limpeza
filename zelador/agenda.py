@@ -72,7 +72,10 @@ def _citar(caminho) -> str:
     texto = str(caminho)
     if '"' in texto:
         raise ValueError(f"o caminho não pode conter aspas: {texto}")
-    return f'"{texto}"'
+    # barras invertidas logo antes da aspa de fechamento precisam ser dobradas: senão "C:\" chega
+    # ao programa como C:" (a regra de divisão de argumentos do Windows lê \" como aspa literal)
+    barras_no_fim = len(texto) - len(texto.rstrip("\\"))
+    return '"' + texto + "\\" * barras_no_fim + '"'
 
 
 def comando_da_tarefa(config: Path, simulacao: bool = False,

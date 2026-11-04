@@ -53,7 +53,13 @@ class IdadeMinima:
             raise ValueError("a idade mínima é de 1 dia (com 0, tudo seria considerado antigo)")
 
     def corresponde(self, item: Item, agora: datetime) -> bool:
-        return agora - datetime.fromtimestamp(item.ultima_atividade) > timedelta(days=self.dias)
+        try:
+            momento = datetime.fromtimestamp(item.ultima_atividade)
+        except (OverflowError, OSError, ValueError):
+            # data que o sistema guarda mas o Python não representa (ex.: ano 10000, que o NTFS
+            # aceita): no futuro nunca é "antigo"; no passado distante, é
+            return item.ultima_atividade < agora.timestamp()
+        return agora - momento > timedelta(days=self.dias)
 
     def resumo(self) -> str:
         return f"sem atividade há mais de {self.dias} dia(s)"
@@ -189,6 +195,12 @@ def _normalizar(caminho: Path) -> str:
     return os.path.normcase(os.path.abspath(caminho))
 
 
+def _mesmo_lugar(a: Path, b: Path) -> bool:
+    """Os dois caminhos levam à mesma pasta, mesmo escritos de jeitos diferentes ('x/../y', barra
+    no fim, maiúsculas no Windows, atalho de pasta)."""
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
 @dataclass(frozen=True)
 class Mover:
     destino: Path
@@ -230,6 +242,11 @@ class Regra:
         if motivo:
             raise ValueError(f"a regra '{self.nome}' não pode atuar em {self.pasta}: "
                              f"é {motivo}")
+        destino = getattr(self.acao, "destino", None)
+        if destino is not None and _mesmo_lugar(destino, self.pasta):
+            # cada execução "moveria" o item para onde ele já está, renomeando: a.pdf, a (1).pdf...
+            raise ValueError(f"a regra '{self.nome}' move os itens para a própria pasta deles "
+                             f"({self.pasta}); escolha outro destino")
         self.condicoes = tuple(self.condicoes)
         if not self.condicoes:
             # sem condição, a regra valeria para tudo da pasta (e Apagar esvaziaria a pasta)
