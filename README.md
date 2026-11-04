@@ -166,6 +166,40 @@ restaurar pelo Explorer. Três coisas que vale saber:
 
 Para apagar de vez use `--permanente` (no `limpar`) ou `acao: apagar` (no YAML).
 
+## Histórico e desfazer
+
+Toda vez que o `rodar` ou o `limpar` trata algum item (de verdade, não na simulação), o Zelador
+anota o que fez em `%LOCALAPPDATA%\Zelador\historico.jsonl`. Dá para consultar e, no caso do que
+foi **movido**, desfazer:
+
+```bash
+zelador historico                    # as últimas execuções, da mais nova para a mais antiga
+zelador historico --lote ID          # item por item do que uma execução fez
+zelador desfazer --dry-run           # mostra o que voltaria, sem mexer em nada
+zelador desfazer                     # devolve ao lugar de origem o que a última execução moveu
+zelador desfazer --lote ID           # ... ou o de uma execução específica
+```
+
+O que dá (e o que não dá) para desfazer:
+
+| Ação | Desfazer |
+|------|----------|
+| `mover` | Sim: volta ao lugar e **ao nome** de antes (um `a (1).pdf` volta a ser `a.pdf`). |
+| Lixeira | Não pelo Zelador: restaure pelo Explorer. |
+| `apagar` | Não: foi apagado de vez. |
+
+Cuidados embutidos: o desfazer **nunca sobrescreve** (se o lugar de origem foi ocupado nesse meio
+tempo, o arquivo volta como `nome (1)`), segue da última ação para a primeira, e um problema em um
+item não impede os demais. Como o histórico é um arquivo de texto que qualquer um pode editar,
+nada nele é obedecido às cegas: antes de mover, o Zelador confere que o item ainda está onde o
+histórico diz, que continua sendo do mesmo tipo (arquivo ou pasta) e que nem ele nem o lugar de
+volta ficam numa pasta protegida do sistema.
+
+O arquivo só recebe linhas novas no fim (se o computador desligar no meio, no máximo a última
+linha fica incompleta e é ignorada) e descarta sozinho o que tem mais de 180 dias quando passa de
+2 MB. Se o disco não deixar gravar, a limpeza continua e o Zelador avisa que aquela execução não
+poderá ser desfeita. Use `--historico ARQUIVO` para usar outro arquivo.
+
 ## Decisões técnicas
 
 - **Reversível por padrão:** o que sai vai para a Lixeira; apagar de vez é uma escolha explícita
@@ -253,6 +287,9 @@ zelador/
   limpeza.py         comando `limpar` (uma regra do motor: tirar o que é antigo, via Lixeira)
   comando_regras.py  comandos `rodar` e `listar`
   comando_modelos.py comandos `modelos` e `iniciar`
+  comando_historico.py  comandos `historico` e `desfazer`
+  historico.py       o arquivo do histórico (só se acrescenta ao fim) e a poda
+  desfazer.py        devolve ao lugar o que foi movido, com as conferências de segurança
   comando_agenda.py  comando `agendar` (criar, remover e mostrar a tarefa no Windows)
   agenda.py          monta a tarefa do Agendador de Tarefas (XML), sem executar nada
   modelos.py         os modelos prontos de regras e o gerador do arquivo
@@ -263,7 +300,7 @@ zelador/
   regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações
   seguranca.py       pastas em que nenhuma regra pode atuar
   arquivos.py        operações sobre arquivos: medir, apagar, enviar à Lixeira, mover
-  caminhos.py        Downloads real do usuário e local do arquivo de regras
+  caminhos.py        Downloads real do usuário e local dos arquivos de regras e de histórico
   logs.py            configuração e rotação dos logs
   __main__.py        permite `python -m zelador`
 exemplos/regras.yml  modelo comentado de arquivo de regras

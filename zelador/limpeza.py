@@ -1,21 +1,25 @@
 import argparse
 from pathlib import Path
 
+from . import caminhos
 from .arquivos import formatar_tamanho
 from .caminhos import obter_pasta_downloads
+from .historico import Historico
 from .logs import logger
-from .opcoes import adicionar_dry_run
+from .opcoes import adicionar_dry_run, adicionar_historico
 from .regras import Apagar, EnviarParaLixeira, IdadeMinima, Regra, Resumo, executar_regra
 
 DIAS_LIMITE = 7  # dias sem atividade para considerar um item como antigo
 
 
-def limpar(pasta: Path, dias: int, dry_run: bool, permanente: bool = False) -> Resumo:
+def limpar(pasta: Path, dias: int, dry_run: bool, permanente: bool = False,
+           registrar=None) -> Resumo:
     """O `limpar` é uma regra do motor: tirar o que está sem atividade há mais de `dias`.
 
     Por padrão o item vai para a Lixeira (dá para restaurar); `permanente` apaga de vez."""
     acao = Apagar() if permanente else EnviarParaLixeira()
-    return executar_regra(Regra("limpar", pasta, [IdadeMinima(dias)], acao), dry_run)
+    return executar_regra(Regra("limpar", pasta, [IdadeMinima(dias)], acao), dry_run,
+                          registrar=registrar)
 
 
 # ------------------------------------------------------------ subcomando
@@ -41,6 +45,7 @@ def registrar(subparsers, comum: argparse.ArgumentParser) -> None:
         description="Remove itens antigos da pasta de Downloads.",
     )
     adicionar_dry_run(parser)
+    adicionar_historico(parser)
     parser.add_argument("--dias", type=_dias_validos, default=DIAS_LIMITE,
                         help="dias sem atividade (mínimo 1; padrão: %(default)s)")
     parser.add_argument("--pasta", type=Path, default=None,
@@ -61,7 +66,9 @@ def executar(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        resumo = limpar(pasta, args.dias, args.dry_run, args.permanente)
+        historico = Historico(args.historico or caminhos.arquivo_de_historico_padrao())
+        resumo = limpar(pasta, args.dias, args.dry_run, args.permanente,
+                        registrar=historico.gravador("limpar"))
     except ValueError as erro:  # pasta protegida (raiz do disco, pasta do sistema...)
         logger.error("%s", erro)
         return 2

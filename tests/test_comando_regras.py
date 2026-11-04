@@ -236,9 +236,9 @@ def test_rodar_recusa_pasta_protegida_sem_nem_listar_a_pasta(amb, monkeypatch, c
     executadas = []
     original = comando_regras.executar_regra
 
-    def registrar_e_executar(regra, dry_run):
+    def registrar_e_executar(regra, dry_run, **resto):
         executadas.append(regra.nome)
-        return original(regra, dry_run)
+        return original(regra, dry_run, **resto)
 
     monkeypatch.setattr(comando_regras, "executar_regra", registrar_e_executar)
     config = amb.yml(f"""

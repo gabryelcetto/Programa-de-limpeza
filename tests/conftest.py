@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from zelador import arquivos
+from zelador import arquivos, caminhos
 
 
 class LixeiraFalsa:
@@ -38,3 +38,12 @@ def lixeira_falsa(monkeypatch, tmp_path_factory):
     monkeypatch.setattr(arquivos, "enviar_para_lixeira", falsa.enviar_para_lixeira)
     monkeypatch.setattr(arquivos.send2trash, "send2trash", falsa.enviar_de_baixo_nivel)
     return falsa
+
+
+@pytest.fixture(autouse=True)
+def historico_isolado(monkeypatch, tmp_path_factory):
+    """O histórico padrão vai para uma pasta do teste: nenhuma execução da suíte escreve no
+    histórico de verdade de quem a roda."""
+    arquivo = tmp_path_factory.mktemp("historico_padrao") / "historico.jsonl"
+    monkeypatch.setattr(caminhos, "arquivo_de_historico_padrao", lambda: arquivo)
+    return arquivo
