@@ -30,17 +30,19 @@ regras:
       mover: ~/Documents/PDFs
 
   # 2. Instaladores grandes, que ninguém mais vai usar depois de instalar.
-  - nome: Apagar instaladores antigos
+  #    `lixeira` envia para a Lixeira do Windows (dá para restaurar). Use `apagar` só se
+  #    quiser apagar DE VEZ, sem volta. Atenção: a Lixeira não libera espaço até ser esvaziada.
+  - nome: Enviar instaladores antigos para a Lixeira
     pasta: "{downloads}"
     condicoes:
       extensoes: [exe, msi]
       tamanho_min: 20MB
       idade_dias: 3
-    acao: apagar
+    acao: lixeira
 
   # 3. Rede de segurança, por último: o que sobrou e está parado há mais de 30 dias.
   - nome: Limpar downloads parados
     pasta: "{downloads}"
     condicoes:
       idade_dias: 30
-    acao: apagar
+    acao: lixeira

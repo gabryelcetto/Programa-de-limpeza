@@ -16,14 +16,17 @@ e o psutil (leitura dos discos).
 O programa é organizado em **comandos**: `limpar`, `rodar` e `listar`.
 
 ```bash
-# Simulação: lista o que seria apagado, sem apagar nada (comece sempre por aqui)
+# Simulação: lista o que seria enviado para a Lixeira, sem mexer em nada (comece sempre por aqui)
 python -m zelador limpar --dry-run
 
-# Apaga o que está há mais de 7 dias (padrão) sem atividade
+# Envia para a Lixeira o que está há mais de 7 dias (padrão) sem atividade
 python -m zelador limpar
 
 # Muda o limite e a pasta
 python -m zelador limpar --dias 14 --pasta "D:\Temporarios"
+
+# Apaga de vez, sem passar pela Lixeira (não tem volta)
+python -m zelador limpar --permanente
 
 # Ajuda geral e de um comando
 python -m zelador --help
@@ -32,6 +35,8 @@ python -m zelador limpar --help
 
 Chamadas sem comando (`python -m zelador --dry-run`, ou sem nenhum argumento) continuam
 funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas antes dos comandos.
+Elas herdam o padrão atual: o que sai de Downloads vai para a **Lixeira**, e não é mais apagado
+de vez.
 
 **Opção comum a todos os comandos**
 
@@ -43,9 +48,10 @@ funcionando e equivalem a `limpar`, para não quebrar tarefas agendadas criadas 
 
 | Opção | Descrição | Padrão |
 |---|---|---|
-| `--dry-run` | Apenas mostra o que seria apagado, sem alterar nada | desligado |
+| `--dry-run` | Apenas mostra o que seria enviado para a Lixeira, sem alterar nada | desligado |
 | `--dias N` | Dias sem atividade para considerar o item antigo (mínimo 1) | `7` |
 | `--pasta CAMINHO` | Pasta a limpar | Downloads do usuário |
+| `--permanente` | Apaga de vez, sem passar pela Lixeira (não tem volta) | desligado |
 
 **Código de saída:** `0` quando tudo ocorreu bem, `1` se houve algum erro ou a pasta não existe,
 e `2` para argumentos inválidos ou uma pasta protegida. Isso permite usar o resultado em
@@ -72,7 +78,7 @@ regras:
     pasta: "{downloads}"
     condicoes:
       idade_dias: 30
-    acao: apagar
+    acao: lixeira
 ```
 
 ```bash
@@ -93,7 +99,8 @@ modelo comentado em [`exemplos/regras.yml`](exemplos/regras.yml).
 | `tamanho_min`, `tamanho_max` | bytes, ou texto com unidade (KB, MB, GB, TB; base 1024) | `50MB` |
 | `nome` | expressão regular sobre o nome, sem diferenciar maiúsculas | `"^relat"` |
 
-**Ações:** `apagar`, ou `mover: <pasta de destino>`. Mover nunca sobrescreve: se o nome já existe
+**Ações:** `lixeira` (recomendada: dá para restaurar), `apagar` (de vez, sem volta), ou
+`mover: <pasta de destino>`. Mover nunca sobrescreve: se o nome já existe
 no destino, o arquivo novo vira `nome (1).ext`.
 
 **Caminhos** devem ser absolutos. Use `{downloads}` (a pasta Downloads real do usuário), `~` (pasta
@@ -106,9 +113,27 @@ serve também para validar o arquivo antes de agendar.
 Cuidado com uma pegadinha do YAML: `no`, `yes`, `on` e `off` sem aspas viram falso/verdadeiro. O
 Zelador avisa quando isso acontece numa lista de extensões; para a extensão `no`, escreva `["no"]`.
 
+## Sobre a Lixeira
+
+Por padrão, o que o Zelador tira de uma pasta vai para a **Lixeira do Windows**, e dá para
+restaurar pelo Explorer. Três coisas que vale saber:
+
+- **A Lixeira não libera espaço.** Os itens continuam ocupando disco até você esvaziá-la. Num teste
+  real, enviar um arquivo de 300 MB deixou o espaço livre do disco igual. Por isso, ao terminar, o
+  `limpar` avisa: "O espaço em disco só volta quando você esvaziar a Lixeira".
+- **O Windows apaga de vez** o que for maior que o limite da Lixeira, ou estiver num disco que não
+  tem Lixeira (pendrive, unidade de rede). Isso não é controlado pelo Zelador.
+- **Atalhos (junction/symlink) nunca vão para a Lixeira:** só o atalho é removido, e o conteúdo
+  para onde ele aponta fica intacto.
+
+Para apagar de vez use `--permanente` (no `limpar`) ou `acao: apagar` (no YAML).
+
 ## Decisões técnicas
 
-- **Segurança primeiro:** o modo `--dry-run` mostra exatamente o que seria apagado, e
+- **Reversível por padrão:** o que sai vai para a Lixeira; apagar de vez é uma escolha explícita
+  (`--permanente` ou `acao: apagar`). Os testes nunca usam a Lixeira de verdade: uma Lixeira falsa é
+  aplicada automaticamente a todos eles.
+- **Segurança primeiro:** o modo `--dry-run` mostra exatamente o que seria feito, e
   `--dias 0` ou negativo é rejeitado (apagaria tudo).
 - **Pastas protegidas:** nenhuma regra pode atuar na raiz de um disco, na pasta pessoal inteira,
   na pasta que contém os usuários nem em pastas do sistema (Windows, Arquivos de Programas). A
@@ -128,7 +153,7 @@ Zelador avisa quando isso acontece numa lista de extensões; para a extensão `n
   o arquivo chegou na máquina.
 - **Pasta de Downloads correta:** é resolvida pela API de Known Folders do Windows, então
   funciona mesmo quando a pasta foi redirecionada (OneDrive, política de grupo).
-- **Arquivos somente leitura** são tratados e apagados normalmente.
+- **Arquivos somente leitura** são tratados normalmente (inclusive pela Lixeira).
 - **Logs por dia** (`<logs>/AAAA-MM-DD/log.txt`) com rotação automática: logs com mais de
   30 dias são removidos.
 
@@ -160,7 +185,7 @@ auditoria de vulnerabilidades das dependências (`pip-audit`).
 ```
 zelador/
   cli.py             comandos e opções comuns (ponto de entrada)
-  limpeza.py         comando `limpar` (uma regra do motor: apagar o que é antigo)
+  limpeza.py         comando `limpar` (uma regra do motor: tirar o que é antigo, via Lixeira)
   comando_regras.py  comandos `rodar` e `listar`
   discos.py          leitura dos discos (psutil)
   painel/recomendacoes.py  recomendações explicáveis: disco cheio, Downloads parados, PDFs soltos
@@ -168,7 +193,7 @@ zelador/
   configuracao.py    leitura e validação do arquivo YAML de regras
   regras.py          motor de regras: condições (idade, extensão, tamanho, nome) e ações
   seguranca.py       pastas em que nenhuma regra pode atuar
-  arquivos.py        operações sobre arquivos: medir, apagar, mover, formatar tamanho
+  arquivos.py        operações sobre arquivos: medir, apagar, enviar à Lixeira, mover
   caminhos.py        Downloads real do usuário e local do arquivo de regras
   logs.py            configuração e rotação dos logs
   __main__.py        permite `python -m zelador`

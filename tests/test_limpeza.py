@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -141,7 +142,7 @@ def test_junction_para_pasta_remove_so_o_atalho(tmp_path):
     assert arquivo_destino.exists()
 
 
-def test_erro_ao_apagar_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
+def test_erro_ao_apagar_de_vez_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
     ruim = criar_arquivo(tmp_path, "a_ruim.txt", dias=10)
     bom = criar_arquivo(tmp_path, "b_bom.txt", dias=10)
     apagar_de_verdade = regras.deletar_item
@@ -153,11 +154,65 @@ def test_erro_ao_apagar_e_contado_e_nao_derruba_o_resto(tmp_path, monkeypatch):
 
     monkeypatch.setattr(regras, "deletar_item", apagar)
 
-    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False, permanente=True)
 
     assert (resumo.aplicados, resumo.erros) == (1, 1)
     assert ruim.exists()
     assert not bom.exists()
+
+
+def test_erro_ao_enviar_para_a_lixeira_e_contado_e_nao_derruba_o_resto(
+        tmp_path, monkeypatch, lixeira_falsa):
+    ruim = criar_arquivo(tmp_path, "a_ruim.txt", dias=10)
+    bom = criar_arquivo(tmp_path, "b_bom.txt", dias=10)
+
+    def enviar(item):
+        if Path(item).name == "a_ruim.txt":
+            raise OSError("o arquivo está em uso")
+        lixeira_falsa.enviar_para_lixeira(item)
+
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", enviar)
+
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)  # o padrão é a Lixeira
+
+    assert (resumo.aplicados, resumo.erros) == (1, 1)
+    assert ruim.exists() and not bom.exists()
+
+
+def test_por_padrao_vai_para_a_lixeira_e_nao_apaga_de_vez(tmp_path, monkeypatch, lixeira_falsa):
+    antigo = criar_arquivo(tmp_path, "antigo.txt", dias=10, conteudo="guardado")
+    recente = criar_arquivo(tmp_path, "recente.txt", dias=1)
+
+    def proibido(caminho):
+        raise AssertionError("o padrão não pode apagar de vez")
+
+    monkeypatch.setattr(regras, "deletar_item", proibido)
+
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False)
+
+    assert resumo.aplicados == 1 and resumo.erros == 0
+    assert not antigo.exists() and recente.exists()
+    assert lixeira_falsa.enviados == [antigo]
+    assert (lixeira_falsa.pasta / "0_antigo.txt").read_text() == "guardado"  # dá para restaurar
+
+
+def test_permanente_apaga_de_vez_e_nao_usa_a_lixeira(tmp_path, lixeira_falsa):
+    antigo = criar_arquivo(tmp_path, "antigo.txt", dias=10)
+
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=False, permanente=True)
+
+    assert resumo.aplicados == 1 and not antigo.exists()
+    assert lixeira_falsa.enviados == [] and list(lixeira_falsa.pasta.iterdir()) == []
+
+
+@pytest.mark.parametrize("permanente", [False, True])
+def test_simulacao_nao_mexe_em_nada_em_nenhum_dos_modos(tmp_path, lixeira_falsa, permanente):
+    antigo = criar_arquivo(tmp_path, "antigo.txt", dias=10, conteudo="12345")
+
+    resumo = limpeza.limpar(tmp_path, DIAS, dry_run=True, permanente=permanente)
+
+    assert antigo.exists() and lixeira_falsa.enviados == []
+    assert (resumo.aplicados, resumo.bytes) == (1, 5)
 
 
 def test_pasta_vazia_nao_quebra(tmp_path):
