@@ -16,7 +16,16 @@ from pathlib import Path
 import yaml
 
 from . import caminhos
-from .regras import Apagar, ExtensaoEm, IdadeMinima, Mover, NomeCorresponde, Regra, TamanhoEntre
+from .regras import (
+    Apagar,
+    EnviarParaLixeira,
+    ExtensaoEm,
+    IdadeMinima,
+    Mover,
+    NomeCorresponde,
+    Regra,
+    TamanhoEntre,
+)
 
 VERSAO = 1
 _CHAVES_DO_ARQUIVO = ("versao", "regras")
@@ -265,6 +274,9 @@ def _tamanho(valor, campo: str) -> int:
 def _acao(dados):
     if dados == "apagar":
         return Apagar()
+    if dados == "lixeira":
+        return EnviarParaLixeira()
     if isinstance(dados, dict) and set(dados) == {"mover"}:
         return Mover(_caminho(dados["mover"], "acao.mover"))
-    raise _ErroValidacao("'acao' inválida: use 'apagar' ou 'mover: <pasta de destino>'")
+    raise _ErroValidacao("'acao' inválida: use 'lixeira', 'apagar' (de vez) ou "
+                         "'mover: <pasta de destino>'")

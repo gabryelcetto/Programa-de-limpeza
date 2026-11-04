@@ -6,8 +6,10 @@ from pathlib import Path
 import pytest
 
 from zelador import arquivos
+from zelador.arquivos import enviar_para_lixeira as lixeira_real
 from zelador.regras import (
     Apagar,
+    EnviarParaLixeira,
     ExtensaoEm,
     IdadeMinima,
     Item,
@@ -414,3 +416,92 @@ def test_detalhar_falso_nao_muda_o_resumo_e_ainda_registra_erros(tmp_path, caplo
 
     assert (com.aplicados, com.bytes) == (sem.aplicados, sem.bytes) == (1, 5)
     assert erro.erros == 1 and "Erro em a.txt" in caplog.text
+
+
+# ------------------------------------------------------------- Lixeira
+
+
+def test_lixeira_envia_o_item_antigo_e_mantem_o_recente(tmp_path, lixeira_falsa):
+    antigo = criar(tmp_path, "antigo.txt", 10, "dado")
+    recente = criar(tmp_path, "recente.txt", 1)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert not antigo.exists() and recente.exists()
+    assert lixeira_falsa.enviados == [antigo]  # foi pela Lixeira, e só ele
+    assert (lixeira_falsa.pasta / "0_antigo.txt").read_text() == "dado"  # guardado, não destruído
+    assert (resumo.aplicados, resumo.ignorados, resumo.erros) == (1, 1, 0)
+
+
+def test_lixeira_em_simulacao_nao_envia_nada(tmp_path, lixeira_falsa):
+    antigo = criar(tmp_path, "antigo.txt", 10, "12345")
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()),
+                            dry_run=True)
+
+    assert antigo.exists() and lixeira_falsa.enviados == []
+    assert (resumo.aplicados, resumo.bytes) == (1, 5)
+
+
+def test_lixeira_nao_chama_apagar_de_vez(tmp_path, monkeypatch):
+    criar(tmp_path, "antigo.txt", 10)
+
+    def proibido(caminho):
+        raise AssertionError("não era para apagar de vez")
+
+    monkeypatch.setattr("zelador.regras.deletar_item", proibido)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert resumo.aplicados == 1
+
+
+def test_erro_da_lixeira_e_contado_e_nao_derruba_os_outros(tmp_path, monkeypatch, lixeira_falsa):
+    ruim = criar(tmp_path, "a_ruim.txt", 10)
+    bom = criar(tmp_path, "b_bom.txt", 10)
+
+    def enviar(item):
+        if Path(item).name == "a_ruim.txt":
+            raise OSError("o arquivo está em uso")
+        lixeira_falsa.enviar_para_lixeira(item)
+
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", enviar)
+
+    resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert (resumo.aplicados, resumo.erros) == (1, 1)
+    assert ruim.exists() and not bom.exists()
+
+
+def test_lixeira_pelo_caminho_real_da_funcao_so_com_a_biblioteca_falsa(
+        tmp_path, monkeypatch, lixeira_falsa, caplog):
+    """Passa pela função de verdade (inclusive a regra dos atalhos); só a biblioteca é falsa."""
+    monkeypatch.setattr(arquivos, "enviar_para_lixeira", lixeira_real)
+    pasta = tmp_path / "pasta_velha"
+    pasta.mkdir()
+    criar(pasta, "dentro.txt", 10)
+    envelhecer(pasta, 10)
+    criar(tmp_path, "solto.txt", 10)
+
+    with caplog.at_level("INFO", logger="zelador"):
+        resumo = executar_regra(Regra("r", tmp_path, [IdadeMinima(7)], EnviarParaLixeira()))
+
+    assert resumo.aplicados == 2 and resumo.erros == 0
+    assert sorted(p.name for p in lixeira_falsa.da_biblioteca) == ["pasta_velha", "solto.txt"]
+    assert "Pasta enviado(a) para a Lixeira: pasta_velha" in caplog.text
+    assert "Arquivo enviado(a) para a Lixeira: solto.txt" in caplog.text
+
+
+def test_lixeira_nao_vale_em_pasta_protegida(sistema_falso):
+    windows, _ = sistema_falso
+
+    with pytest.raises(ValueError, match="pasta do sistema"):
+        Regra("perigosa", windows, [IdadeMinima(7)], EnviarParaLixeira())
+
+
+def test_textos_da_acao_lixeira():
+    acao = EnviarParaLixeira()
+
+    assert acao.resumo() == "enviar para a Lixeira"
+    assert acao.descricao() == "enviado(a) para a Lixeira"
+    assert acao.ocupa(Path("qualquer")) is False

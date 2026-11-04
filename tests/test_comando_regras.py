@@ -90,6 +90,60 @@ def test_rodar_executa_as_regras_em_ordem(amb):
     assert recente.exists()
 
 
+def test_rodar_com_acao_lixeira_envia_para_a_lixeira(amb, lixeira_falsa, caplog):
+    antigo = amb.arquivo("velho.txt", 10, conteudo="guardado")
+    recente = amb.arquivo("novo.txt", 1)
+    config = amb.yml("""
+        regras:
+          - nome: Limpar para a Lixeira
+            pasta: "{downloads}"
+            condicoes: {idade_dias: 7}
+            acao: lixeira
+    """)
+
+    codigo = amb.cli("rodar", "--config", str(config))
+
+    assert codigo == 0
+    assert not antigo.exists() and recente.exists()
+    assert lixeira_falsa.enviados == [antigo]
+    assert (lixeira_falsa.pasta / "0_velho.txt").read_text() == "guardado"
+    assert "enviado(a) para a Lixeira: velho.txt" in caplog.text
+
+
+def test_rodar_dry_run_com_lixeira_nao_envia_nada(amb, lixeira_falsa):
+    antigo = amb.arquivo("velho.txt", 10)
+    config = amb.yml("""
+        regras:
+          - nome: Limpar para a Lixeira
+            pasta: "{downloads}"
+            condicoes: {idade_dias: 7}
+            acao: lixeira
+    """)
+
+    assert amb.cli("rodar", "--config", str(config), "--dry-run") == 0
+    assert antigo.exists() and lixeira_falsa.enviados == []
+
+
+def test_listar_mostra_a_acao_lixeira_e_a_apagar_de_forma_distinta(amb, capsys):
+    config = amb.yml("""
+        regras:
+          - nome: Para a Lixeira
+            pasta: "{downloads}"
+            condicoes: {idade_dias: 7}
+            acao: lixeira
+          - nome: De vez
+            pasta: "{downloads}"
+            condicoes: {idade_dias: 30}
+            acao: apagar
+    """)
+
+    amb.cli("listar", "--config", str(config))
+    saida = capsys.readouterr().out
+
+    assert "acao  : enviar para a Lixeira" in saida
+    assert "acao  : apagar" in saida and saida.count("acao  : apagar") == 1
+
+
 def test_rodar_dry_run_nao_altera_nada(amb, caplog):
     pdf = amb.arquivo("a.pdf", 10)
     antigo = amb.arquivo("velho.txt", 10)

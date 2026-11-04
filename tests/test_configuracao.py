@@ -10,7 +10,15 @@ from zelador.configuracao import (
     carregar_regras,
     carregar_regras_de_texto,
 )
-from zelador.regras import Apagar, ExtensaoEm, IdadeMinima, Mover, NomeCorresponde, TamanhoEntre
+from zelador.regras import (
+    Apagar,
+    EnviarParaLixeira,
+    ExtensaoEm,
+    IdadeMinima,
+    Mover,
+    NomeCorresponde,
+    TamanhoEntre,
+)
 
 MB = 1024**2
 
@@ -87,6 +95,23 @@ def test_apagar_e_varias_regras_na_ordem_do_arquivo():
 
     assert [r.nome for r in carga.regras] == ["B", "A"]
     assert carga.regras[0].acao == Apagar()
+
+
+def test_acao_lixeira_e_acao_apagar_sao_coisas_diferentes():
+    lixeira = carregar(regra_com("").replace("acao: apagar", "acao: lixeira"))
+    apagar = carregar(regra_com(""))
+
+    assert lixeira.erros == [] and lixeira.regras[0].acao == EnviarParaLixeira()
+    assert apagar.regras[0].acao == Apagar()  # `apagar` continua apagando de vez, como antes
+
+
+@pytest.mark.parametrize("valor", [
+    "Lixeira", "LIXEIRA", "lixo", "trash", "'lixeira '", "[lixeira]",
+])
+def test_acao_lixeira_com_outra_grafia_e_recusada(valor):
+    mensagem = invalida(regra_yaml(acao=f"acao: {valor}"))
+
+    assert "'acao' inválida" in mensagem and "'lixeira'" in mensagem  # a mensagem ensina o certo
 
 
 def test_versao_pode_ser_omitida():

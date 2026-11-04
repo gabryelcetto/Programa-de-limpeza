@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Protocol
 
+from . import arquivos as _arquivos
 from .arquivos import deletar_item, formatar_tamanho, medir_item, mover_item
 from .logs import logger
 from .seguranca import motivo_pasta_protegida, pasta_do_sistema_que_contem
@@ -153,6 +154,24 @@ class Apagar:
 
     def aplicar(self, item: Item) -> None:
         deletar_item(item.caminho)
+
+    def ocupa(self, caminho: Path) -> bool:
+        return False
+
+
+@dataclass(frozen=True)
+class EnviarParaLixeira:
+    """Como `Apagar`, mas o item vai para a Lixeira do sistema e dá para restaurá-lo."""
+
+    def descricao(self) -> str:
+        return "enviado(a) para a Lixeira"
+
+    def resumo(self) -> str:
+        return "enviar para a Lixeira"
+
+    def aplicar(self, item: Item) -> None:
+        # pelo módulo (e não importando o nome): quem testa troca num ponto só
+        _arquivos.enviar_para_lixeira(item.caminho)
 
     def ocupa(self, caminho: Path) -> bool:
         return False
