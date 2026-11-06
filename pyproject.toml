@@ -20,6 +20,9 @@ zelador = "zelador.cli:main"
 [tool.setuptools]
 packages = ["zelador", "zelador.painel"]
 
+[tool.setuptools.package-data]
+"zelador.painel" = ["*.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
