@@ -275,7 +275,8 @@ class Registro:
 
 def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime] = None,
                    detalhar: bool = True,
-                   registrar: Optional[Callable[[Registro], None]] = None) -> Resumo:
+                   registrar: Optional[Callable[[Registro], None]] = None,
+                   observar: Optional[Callable[[Item], None]] = None) -> Resumo:
     """Aplica a regra aos itens da pasta. Um erro em um item não interrompe os demais.
 
     `detalhar=False` não registra uma linha de log por item (para simulações só de estimativa,
@@ -283,7 +284,10 @@ def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime
 
     `registrar`, se informado, é chamado a cada item aplicado DE VERDADE (nunca na simulação),
     depois de a ação dar certo. Ele não deve levantar por problemas de disco: o que ele levantar
-    não é tratado como erro do item e interrompe a regra."""
+    não é tratado como erro do item e interrompe a regra.
+
+    `observar`, se informado, recebe cada item que casou com a regra, TAMBÉM na simulação (é
+    como o painel monta a lista do que seria feito)."""
     resumo = Resumo()
     agora = agora or datetime.now()
     prefixo = "[SIMULAÇÃO] " if dry_run else ""
@@ -312,6 +316,8 @@ def executar_regra(regra: Regra, dry_run: bool = False, agora: Optional[datetime
 
         resumo.aplicados += 1
         resumo.bytes += item.tamanho
+        if observar is not None:
+            observar(item)
         if registrar is not None and not dry_run:
             registrar(Registro(regra.nome, getattr(regra.acao, "tipo", "outra"),
                                Path(os.path.abspath(caminho)),

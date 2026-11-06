@@ -942,6 +942,10 @@ async function confirmarSimulacao() {
     let texto = s.id === "organizar_pdfs" ? `${plural(qtd, "PDF foi movido", "PDFs foram movidos")} para Documentos\\PDFs. Dá para desfazer no Histórico.`
       : s.id === "limpar_downloads" ? `${plural(qtd, "item foi", "itens foram")} para a Lixeira (${tamanho(bytes)}). O espaço volta quando ela for esvaziada.`
       : `As regras trataram ${plural(qtd, "item", "itens")} (${tamanho(bytes)}).`;
+    if (resposta && resposta.mensagem) {  // o que o Python fez de fato
+      texto = resposta.mensagem;
+      if (resposta.problemas?.length) texto += " " + resposta.problemas.join(" · ");
+    }
     if (resposta && resposta.encenado) texto += " (Demonstração: nada mudou no computador.)";
     $("#aviso-texto").innerHTML = `<b>Pronto.</b> ${esc(texto)}`;
     fecharSimulacao();
@@ -1007,17 +1011,23 @@ function ligarEventos() {
   $("#hora").addEventListener("change", (e) => { estado.agenda.hora = e.target.value || "09:00"; mudouAgenda(); });
   $("#chave-sim").addEventListener("click", () => { estado.agenda.simulacao = !estado.agenda.simulacao; mudouAgenda(); });
   $("#salvar-agenda").addEventListener("click", async () => {
-    const r = await executar("agendar", { ...estado.agenda });
-    estado.dados.agenda = { ...estado.agenda, existe: true };
-    desenharAgendaResumo();
-    $("#agenda-ok").textContent = r && r.encenado ? "Salvo na tela (demonstração)." : "Tarefa atualizada.";
+    try {
+      const r = await executar("agendar", { ...estado.agenda });
+      if (r && r.encenado) { estado.dados.agenda = { ...estado.agenda, existe: true }; desenharAgendaResumo(); }
+      $("#agenda-ok").textContent = r && r.encenado ? "Salvo na tela (demonstração)." : (r?.mensagem || "Tarefa atualizada.");
+    } catch (erro) {
+      $("#agenda-ok").textContent = "Não deu para agendar: " + (erro?.message || erro);
+    }
   });
   $("#remover-agenda").addEventListener("click", async () => {
     if (!confirm("Remover a tarefa “Zelador” do Agendador do Windows?")) return;
-    const r = await executar("remover_agenda", {});
-    estado.dados.agenda = { ...estado.agenda, existe: false };
-    desenharAgendaResumo();
-    $("#agenda-ok").textContent = r && r.encenado ? "Removida na tela (demonstração)." : "Tarefa removida.";
+    try {
+      const r = await executar("remover_agenda", {});
+      if (r && r.encenado) { estado.dados.agenda = { ...estado.agenda, existe: false }; desenharAgendaResumo(); }
+      $("#agenda-ok").textContent = r && r.encenado ? "Removida na tela (demonstração)." : (r?.mensagem || "Tarefa removida.");
+    } catch (erro) {
+      $("#agenda-ok").textContent = "Não deu para remover: " + (erro?.message || erro);
+    }
   });
 }
 
@@ -1026,9 +1036,8 @@ async function desfazer(indice, botao) {
   if (!lote) return;
   botao.disabled = true;
   try {
-    await executar("desfazer", { lote: lote.id });
-    lote.desfeito = true;
-    desenharHistorico();
+    const r = await executar("desfazer", { lote: lote.id });
+    if (r && r.encenado) { lote.desfeito = true; desenharHistorico(); }  // com o Python, os dados já vieram atualizados
   } catch (erro) {
     botao.disabled = false;
     alert("Não deu para desfazer: " + (erro?.message || erro));
@@ -1036,8 +1045,9 @@ async function desfazer(indice, botao) {
 }
 
 /* ===================================================================== início */
-(async function iniciar() {
-  const { dados, exemplo } = await carregar();
+/* Desenha tudo a partir dos dados. Chamada no início e de novo depois de cada ação (a ponte com o
+   Python manda os dados atualizados por window.zeladorAtualizar). */
+function aplicarDados(dados, exemplo = false) {
   dados.discos ||= []; dados.recomendacoes ||= []; dados.regras ||= []; dados.historico ||= []; dados.simulacoes ||= {};
   dados.agenda ||= { existe: false, frequencia: "diaria", hora: "09:00", dias: [], simulacao: true };
   estado.dados = dados;
@@ -1055,8 +1065,14 @@ async function desfazer(indice, botao) {
   desenharHistorico();
   desenharRegrasCompletas();
   desenharAgendaForm();
+  irPara(estado.tela);
+}
+window.zeladorAtualizar = (dados) => aplicarDados(dados);
+
+(async function iniciar() {
+  const { dados, exemplo } = await carregar();
+  aplicarDados(dados, exemplo);
   ligarEventos();
-  irPara("geral");
 })();
 </script>
 </body>

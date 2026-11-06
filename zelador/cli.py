@@ -10,6 +10,7 @@ from . import (
     comando_agenda,
     comando_historico,
     comando_modelos,
+    comando_painel,
     comando_regras,
     limpeza,
     logs,
@@ -17,7 +18,8 @@ from . import (
 
 # Módulos que oferecem `registrar(subparsers, comum)`; cada um define subcomandos.
 # `comum` tem o que todos os comandos aceitam (hoje, --log-dir).
-SUBCOMANDOS = (limpeza, comando_regras, comando_modelos, comando_agenda, comando_historico)
+SUBCOMANDOS = (limpeza, comando_regras, comando_modelos, comando_agenda, comando_historico,
+               comando_painel)
 
 SUBCOMANDO_PADRAO = "limpar"
 
